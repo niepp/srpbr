@@ -66,7 +66,20 @@ HDC screenDC;
 
 int clamp(int x, int min, int max)
 {
-	return (x < min) ? min : ((x > max) ? max : x); 
+	return (x < min) ? min : ((x > max) ? max : x);
+}
+
+uint8_t to_color_int(float c)
+{
+	return (uint8_t)(c * 255.0f + 0.5);
+}
+
+uint32_t makefour(const color_t& color)
+{
+	return to_color_int(color.r)
+		| to_color_int(color.g) << 8
+		| to_color_int(color.b) << 16
+		| to_color_int(color.a) << 24;
 }
 
 float lerp(float x1, float x2, float t)
@@ -374,11 +387,16 @@ void write_pixel(int x, int y, uint32_t color)
 
 void scan_horizontal(vertex_t* vl, vertex_t* vr, int y)
 {
+	float dist = vr->pos_t.x - vl->pos_t.x;
 	int left = (int)(vl->pos_t.x + 0.5f);
 	int right = (int)(vr->pos_t.x + 0.5f);
 	for (int i = left; i < right; ++i)
 	{
-		write_pixel(i, y, 0xffffffff);
+		vertex_t p;
+		float w = (i - vl->pos_t.x) / dist;
+		lerp(&p, vl, vr, w);
+		uint32_t c = makefour(p.color);
+		write_pixel(i, y, c);
 	}
 
 }
@@ -392,27 +410,23 @@ void scan_triangle(scan_tri_t *sctri)
 
 	assert(sctri->l.pos_t.y == sctri->r.pos_t.y);
 
+	float ymax = std::fmax(sctri->p.pos_t.y, sctri->l.pos_t.y);
 	float ymin = std::fmin(sctri->p.pos_t.y, sctri->l.pos_t.y);
-	float ydist = std::abs(sctri->p.pos_t.y - sctri->l.pos_t.y);
+	float ydist = sctri->p.pos_t.y - sctri->l.pos_t.y;
 
-	int bottom = (int)(sctri->p.pos_t.y + 0.5f);
-	int top = (int)(sctri->l.pos_t.y + 0.5f);
-	if (top < bottom)
-	{
-		std::swap(top, bottom);
-	}
+	int bottom = (int)(ymin + 0.5f);
+	int top = (int)(ymax + 0.5f);
 
 	vertex_t vl, vr;
 	for (int i = bottom; i < top; ++i)
 	{
 		float cury = i + 0.5f;
-		float w = (cury - ymin) / ydist;
+		float w = ydist > 0 ? (cury - ymin) / ydist : (cury - ymax) / ydist;
 		assert(w >= 0 && w <= 1.0f);
 		lerp(&vl, &sctri->l, &sctri->p, w);
 		lerp(&vr, &sctri->r, &sctri->p, w);
 		scan_horizontal(&vl, &vr, i);
 	}
-
 
 }
 
