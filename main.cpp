@@ -69,7 +69,8 @@ matrix_t view;
 matrix_t proj;
 matrix_t mvp;
 
-uint32_t* framebuffer = nullptr;
+uint32_t *framebuffer = nullptr;
+float *zbuffer = nullptr;
 HDC screenDC;
 
 
@@ -113,6 +114,7 @@ void lerp(vector_t* p, const vector_t* a, const vector_t* b, float w)
 	p->x = lerp(a->x, b->x, w);
 	p->y = lerp(a->y, b->y, w);
 	p->z = lerp(a->z, b->z, w);
+	p->w = lerp(a->w, b->w, w);
 }
 
 void lerp(color_t* p, const color_t* a, const color_t* b, float w)
@@ -390,7 +392,7 @@ void to_screen_coord(vector_t *p)
 {
 	// to screen coord x[0, width], y[0, height], z[0, 1]
 	p->x = (p->x + 1.0f) * 0.5f * width;
-	p->y = (p->y + 1.0f) * 0.5f * height;
+	p->y = height - 1 - (p->y + 1.0f) * 0.5f * height;
 }
 
 void write_pixel(int x, int y, uint32_t color)
@@ -398,6 +400,21 @@ void write_pixel(int x, int y, uint32_t color)
 	assert(x >= 0 && x < width);
 	assert(y >= 0 && y < height);
 	framebuffer[y * width + x] = color;
+}
+
+void write_depth(int x, int y, float z)
+{
+	assert(x >= 0 && x < width);
+	assert(y >= 0 && y < height);
+	zbuffer[y * width + x] = z;
+}
+
+bool depth_test(int x, int y, float z)
+{
+	assert(x >= 0 && x < width);
+	assert(y >= 0 && y < height);
+	float nowz = zbuffer[y * width + x];
+	return z >= nowz;
 }
 
 void scan_horizontal(vertex_t* vl, vertex_t* vr, int y)
@@ -410,8 +427,13 @@ void scan_horizontal(vertex_t* vl, vertex_t* vr, int y)
 		vertex_t p;
 		float w = (i - vl->pos_t.x) / dist;
 		lerp(&p, vl, vr, w);
-		uint32_t c = makefour(p.color);
-		write_pixel(i, y, c);
+		float z = 1.0f / p.pos_t.w;
+		if (depth_test(i, y, z))
+		{
+			uint32_t c = makefour(p.color);
+			write_pixel(i, y, c);
+			write_depth(i, y, z);
+		}
 	}
 
 }
@@ -508,6 +530,7 @@ int box_ib[36] = {
 void update()
 {
 	memset(framebuffer, 0, width * height * sizeof(uint32_t));
+	memset(zbuffer, 0, width * height * sizeof(float));
 
 	angle_speed += 0.01f;
 	matrix_set_rotate(&model, -1.0f, -0.5f, 1.0f, cPI * angle_speed);
@@ -636,6 +659,9 @@ int main(void)
 
 	framebuffer = new uint32_t[width * height];
 	memset(framebuffer, 0, width * height * sizeof(uint32_t));
+
+	zbuffer = new float[width * height];
+	memset(zbuffer, 0, width * height * sizeof(float));
 
 	screenDC = CreateCompatibleDC(GetDC(hwnd));
 
