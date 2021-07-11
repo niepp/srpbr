@@ -48,14 +48,22 @@ typedef struct {
 	vertex_t l, r;
 } scan_tri_t;
 
-vertex_t triangle[3] = {
-	{ { -1.0f, -1.0f,  1.0f, 1.0f }, { 0.0f, 0.0f,  0.0f, 0.0f }, { 0.0f, 0.0f }, { 1.0f, 0.2f, 0.2f } },
-	{ {  1.0f, -1.0f,  1.0f, 1.0f }, { 0.0f, 0.0f,  0.0f, 0.0f }, { 0.0f, 1.0f }, { 0.2f, 1.0f, 0.2f } },
-	{ {  1.0f,  1.0f,  1.0f, 1.0f }, { 0.0f, 0.0f,  0.0f, 0.0f }, { 1.0f, 1.0f }, { 0.2f, 0.2f, 1.0f } },
+vertex_t box_vb[8] = {
+	{ { -1, -1,  1, 1 }, { 0, 0, 0, 0 }, { 0, 0 }, { 1.0f, 0.2f, 0.2f } },
+	{ {  1, -1,  1, 1 }, { 0, 0, 0, 0 }, { 0, 1 }, { 0.2f, 1.0f, 0.2f } },
+	{ {  1,  1,  1, 1 }, { 0, 0, 0, 0 }, { 1, 1 }, { 0.2f, 0.2f, 1.0f } },
+	{ { -1,  1,  1, 1 }, { 0, 0, 0, 0 }, { 1, 0 }, { 1.0f, 0.2f, 1.0f } },
+
+	{ { -1, -1, -1, 1 }, { 0, 0, 0, 0 }, { 0, 0 }, { 1.0f, 1.0f, 0.2f } },
+	{ {  1, -1, -1, 1 }, { 0, 0, 0, 0 }, { 0, 1 }, { 0.2f, 1.0f, 1.0f } },
+	{ {  1,  1, -1, 1 }, { 0, 0, 0, 0 }, { 1, 1 }, { 1.0f, 0.3f, 0.3f } },
+	{ { -1,  1, -1, 1 }, { 0, 0, 0, 0 }, { 1, 0 }, { 0.2f, 1.0f, 0.3f } },
 };
+
 
 HWND hwnd = 0;
 int width = 0, height = 0;
+float angle_speed = 0.25f;
 matrix_t model;
 matrix_t view;
 matrix_t proj;
@@ -63,6 +71,13 @@ matrix_t mvp;
 
 uint32_t* framebuffer = nullptr;
 HDC screenDC;
+
+
+template <typename T, int n>
+int array_size(T(&)[n])
+{
+	return n;
+}
 
 int clamp(int x, int min, int max)
 {
@@ -430,89 +445,108 @@ void scan_triangle(scan_tri_t *sctri)
 
 }
 
-void draw_triangle(const matrix_t* mvp, vertex_t* tri)
+void vertex_process(const matrix_t* mvp, vertex_t& p)
 {
-	matrix_apply(&tri[0].pos_t, &tri[0].pos, mvp);
-	matrix_apply(&tri[1].pos_t, &tri[1].pos, mvp);
-	matrix_apply(&tri[2].pos_t, &tri[2].pos, mvp);
-	
-	perspective_divide(&tri[0].pos_t);
-	perspective_divide(&tri[1].pos_t);
-	perspective_divide(&tri[2].pos_t);
+	matrix_apply(&p.pos_t, &p.pos, mvp);
+	perspective_divide(&p.pos_t);
+	to_screen_coord(&p.pos_t);
+}
 
-	if (!check_clip(&tri[0].pos_t)) return;
-	if (!check_clip(&tri[1].pos_t)) return;
-	if (!check_clip(&tri[2].pos_t)) return;
-
-	to_screen_coord(&tri[0].pos_t);
-	to_screen_coord(&tri[1].pos_t);
-	to_screen_coord(&tri[2].pos_t);
-
-	// p0y <= p1y <= p2y
-	if (tri[0].pos_t.y > tri[1].pos_t.y) std::swap(tri[0], tri[1]);
-	if (tri[0].pos_t.y > tri[2].pos_t.y) std::swap(tri[0], tri[2]);
-	if (tri[1].pos_t.y > tri[2].pos_t.y) std::swap(tri[1], tri[2]);
-
+void draw_triangle(const matrix_t* mvp, const vertex_t& p0, const vertex_t& p1, const vertex_t& p2)
+{
 	// degenerate triangle
-	if (tri[0].pos_t.y == tri[1].pos_t.y && tri[1].pos_t.y == tri[2].pos_t.y) return;
-	if (tri[0].pos_t.x == tri[1].pos_t.x && tri[1].pos_t.x == tri[2].pos_t.x) return;
+	if (p0.pos_t.y == p1.pos_t.y && p1.pos_t.y == p2.pos_t.y) return;
+	if (p0.pos_t.x == p1.pos_t.x && p1.pos_t.x == p2.pos_t.x) return;
 
 	scan_tri_t uptri, downtri;
-	if (tri[0].pos_t.y == tri[1].pos_t.y) // up triangle
+	if (p0.pos_t.y == p1.pos_t.y) // up triangle
 	{
-		uptri.p = tri[2];
-		uptri.l = tri[0];
-		uptri.r = tri[1];
+		uptri.p = p2;
+		uptri.l = p0;
+		uptri.r = p1;
 		scan_triangle(&uptri);
 	}
-	else if (tri[1].pos_t.y == tri[2].pos_t.y) // down triangle
+	else if (p1.pos_t.y == p2.pos_t.y) // down triangle
 	{
-		downtri.p = tri[0];
-		downtri.l = tri[1];
-		downtri.r = tri[2];
+		downtri.p = p0;
+		downtri.l = p1;
+		downtri.r = p2;
 		scan_triangle(&downtri);
 	}
 	else
 	{
 		vertex_t mid;
-		mid.pos.x = mid.pos.y = mid.pos.z = mid.pos.w = 0;		
-		float w = (tri[1].pos_t.y - tri[0].pos_t.y) / (tri[2].pos_t.y - tri[0].pos_t.y);
-		lerp(&mid, &tri[0], &tri[2], w);
-		mid.pos_t.y = tri[1].pos_t.y;
+		mid.pos.x = mid.pos.y = mid.pos.z = mid.pos.w = 0;
+		float w = (p1.pos_t.y - p0.pos_t.y) / (p2.pos_t.y - p0.pos_t.y);
+		lerp(&mid, &p0, &p2, w);
+		mid.pos_t.y = p1.pos_t.y;
 
-		uptri.p = tri[2];
+		uptri.p = p2;
 		uptri.l = mid;
-		uptri.r = tri[1];
+		uptri.r = p1;
 
-		downtri.p = tri[0];
+		downtri.p = p0;
 		downtri.l = mid;
-		downtri.r = tri[1];
+		downtri.r = p1;
 
 		scan_triangle(&uptri);
 		scan_triangle(&downtri);
 
 	}
 
-
-
-	//lerp()
-
-	// 
-	//tri[0].pos
-
-	//
-	
 }
 
-
+int box_ib[36] = {
+	0, 1, 2,  2, 3, 0,
+	7, 6, 5,  5, 4, 7,
+	0, 4, 5,  5, 1, 0,
+	1, 5, 6,  6, 2, 1,
+	2, 6, 7,  7, 3, 2,
+	3, 7, 4,  4, 0, 3,
+};
 
 void update()
 {
-	draw_triangle(&mvp, triangle);
+	memset(framebuffer, 0, width * height * sizeof(uint32_t));
+
+	angle_speed += 0.01f;
+	matrix_set_rotate(&model, -1.0f, -0.5f, 1.0f, cPI * angle_speed);
+
+	matrix_t mv;
+	matrix_mul(&mv, &model, &view);
+	matrix_mul(&mvp, &mv, &proj);
+
+	for (auto& v : box_vb)
+	{
+		vertex_process(&mvp, v);
+	}
+
+	int tri_num = array_size(box_ib) / 3;
+	for (int i = 0; i < tri_num; ++i)
+	{
+		int i0 = box_ib[i * 3 + 0];
+		int i1 = box_ib[i * 3 + 1];
+		int i2 = box_ib[i * 3 + 2];
+
+		//if (!check_clip(&p0.pos_t)) return;
+		//if (!check_clip(&p1.pos_t)) return;
+		//if (!check_clip(&p2.pos_t)) return;
+
+		vertex_t* p0 = &box_vb[i0];
+		vertex_t* p1 = &box_vb[i1];
+		vertex_t* p2 = &box_vb[i2];
+
+		// p0y <= p1y <= p2y
+		if (p0->pos_t.y > p1->pos_t.y) std::swap(p0, p1);
+		if (p0->pos_t.y > p2->pos_t.y) std::swap(p0, p2);
+		if (p1->pos_t.y > p2->pos_t.y) std::swap(p1, p2);
+
+		draw_triangle(&mvp, *p0, *p1, *p2);
+	}
 
 	HDC hDC = GetDC(hwnd);
 	BitBlt(hDC, 0, 0, width, height, screenDC, 0, 0, SRCCOPY);
-
+	ReleaseDC(hwnd, hDC);
 }
 
 
@@ -624,12 +658,6 @@ int main(void)
 	vector_t at = { 0.0f, 0.0f, 0.0f, 1.0f };
 	vector_t up = { 0.0f, 0.0f, 1.0f, 1.0f };
 	matrix_set_lookat(&view, &eye, &at, &up);
-
-	matrix_set_rotate(&model, -1.0f, -0.5f, 1.0f, cPI * 0.25f);
-
-	matrix_t mv;
-	matrix_mul(&mv, &model, &view);
-	matrix_mul(&mvp, &mv, &proj);
 
 	main_loop();
 
