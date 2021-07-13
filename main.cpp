@@ -1,4 +1,4 @@
-#include <windows.h>
+ï»¿#include <windows.h>
 #include <tchar.h>
 #include <iostream>
 #include <cassert>
@@ -139,7 +139,7 @@ float vector_length(const vector_t* v)
 	return (float)sqrt(sq);
 }
 
-// z = x + y
+// c = a + b
 void vector_add(vector_t* c, const vector_t* a, const vector_t* b)
 {
 	c->x = a->x + b->x;
@@ -147,7 +147,8 @@ void vector_add(vector_t* c, const vector_t* a, const vector_t* b)
 	c->z = a->z + b->z;
 	c->w = 1.0;
 }
-// z = x - y
+
+// c = a - b
 void vector_sub(vector_t* c, const vector_t* a, const vector_t* b)
 {
 	c->x = a->x - b->x;
@@ -156,13 +157,13 @@ void vector_sub(vector_t* c, const vector_t* a, const vector_t* b)
 	c->w = 1.0;
 }
 
-// Ê¸Á¿µã³Ë
+// çŸ¢é‡ç‚¹ä¹˜
 float vector_dot(const vector_t* a, const vector_t* b)
 {
 	return a->x * b->x + a->y * b->y + a->z * b->z;
 }
 
-// Ê¸Á¿²æ³Ë
+// çŸ¢é‡å‰ä¹˜
 void vector_cross(vector_t* c, const vector_t* a, const vector_t* b)
 {
 	c->x = a->y * b->z - a->z * b->y;
@@ -171,7 +172,7 @@ void vector_cross(vector_t* c, const vector_t* a, const vector_t* b)
 	c->w = 1.0f;
 }
 
-// Ê¸Á¿²åÖµ£¬tÈ¡Öµ [0, 1]
+// çŸ¢é‡æ’å€¼ï¼Œtå–å€¼ [0, 1]
 void vector_lerp(vector_t* c, const vector_t* a, const vector_t* b, float t)
 {
 	c->x = lerp(a->x, b->x, t);
@@ -180,7 +181,7 @@ void vector_lerp(vector_t* c, const vector_t* a, const vector_t* b, float t)
 	c->w = 1.0f;
 }
 
-// Ê¸Á¿¹éÒ»»¯
+// çŸ¢é‡å½’ä¸€åŒ–
 void vector_normalize(vector_t* v)
 {
 	float length = vector_length(v);
@@ -271,7 +272,7 @@ void matrix_set_zero(matrix_t* m) {
 	m->m[3][0] = m->m[3][1] = m->m[3][2] = m->m[3][3] = 0.0f;
 }
 
-// Æ½ÒÆ±ä»»
+// å¹³ç§»å˜æ¢
 void matrix_set_translate(matrix_t* m, float x, float y, float z)
 {
 	matrix_set_identity(m);
@@ -280,7 +281,7 @@ void matrix_set_translate(matrix_t* m, float x, float y, float z)
 	m->m[3][2] = z;
 }
 
-// Ëõ·Å±ä»»
+// ç¼©æ”¾å˜æ¢
 void matrix_set_scale(matrix_t* m, float x, float y, float z)
 {
 	matrix_set_identity(m);
@@ -289,7 +290,7 @@ void matrix_set_scale(matrix_t* m, float x, float y, float z)
 	m->m[2][2] = z;
 }
 
-// Ğı×ª¾ØÕó
+// æ—‹è½¬çŸ©é˜µ
 void matrix_set_rotate(matrix_t* m, float x, float y, float z, float theta)
 {
 	float qsin = (float)sin(theta * 0.5f);
@@ -390,7 +391,7 @@ void perspective_divide(vector_t* p)
 
 void to_screen_coord(vector_t *p)
 {
-	// to screen coord x[0, width], y[0, height], z[0, 1]
+	// to screen coord x[0, width], y[0, height], z[0, 1] (depth)
 	p->x = (p->x + 1.0f) * 0.5f * width;
 	p->y = height - 1 - (p->y + 1.0f) * 0.5f * height;
 }
@@ -427,8 +428,8 @@ void scan_horizontal(vertex_t* vl, vertex_t* vr, int y)
 		vertex_t p;
 		float w = (i - vl->pos_t.x) / dist;
 		lerp(&p, vl, vr, w);
-		float z = 1.0f / p.pos_t.w;
-		if (depth_test(i, y, z))
+		float z = p.pos_t.z;
+		if (depth_test(i, y, p.pos_t.z))
 		{
 			uint32_t c = makefour(p.color);
 			write_pixel(i, y, c);
@@ -518,7 +519,7 @@ void draw_triangle(const matrix_t* mvp, const vertex_t& p0, const vertex_t& p1, 
 
 }
 
-int box_ib[36] = {
+int box_ib[] = {
 	0, 1, 2,  2, 3, 0,
 	7, 6, 5,  5, 4, 7,
 	0, 4, 5,  5, 1, 0,
@@ -555,16 +556,28 @@ void update()
 		//if (!check_clip(&p1.pos_t)) return;
 		//if (!check_clip(&p2.pos_t)) return;
 
+		vector_t v01, v02;
+		vector_sub(&v01, &box_vb[i1].pos_t, &box_vb[i0].pos_t);
+		vector_sub(&v02, &box_vb[i2].pos_t, &box_vb[i0].pos_t);
+
+		float det_xy = v01.x * v02.y - v01.y * v02.x;
+		if (det_xy >= 0.0f)
+		{
+			// backface culling
+			continue;
+		}
+
 		vertex_t* p0 = &box_vb[i0];
 		vertex_t* p1 = &box_vb[i1];
 		vertex_t* p2 = &box_vb[i2];
 
-		// p0y <= p1y <= p2y
+		// make sure p0y <= p1y <= p2y
 		if (p0->pos_t.y > p1->pos_t.y) std::swap(p0, p1);
 		if (p0->pos_t.y > p2->pos_t.y) std::swap(p0, p2);
 		if (p1->pos_t.y > p2->pos_t.y) std::swap(p1, p2);
 
 		draw_triangle(&mvp, *p0, *p1, *p2);
+
 	}
 
 	HDC hDC = GetDC(hwnd);
@@ -627,14 +640,14 @@ HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
 
 	RegisterClassEx(&wc);
 
-	// calculate client size£¬ÉèÖÃ´°¿Ú¿Í»§Çø´óĞ¡
+	// calculate client sizeï¼Œè®¾ç½®çª—å£å®¢æˆ·åŒºå¤§å°
 	RECT clientSize;
 	clientSize.top = 0;
 	clientSize.left = 0;
 	clientSize.right = width;
 	clientSize.bottom = height;
 	DWORD style = WS_OVERLAPPEDWINDOW | WS_BORDER | WS_CAPTION | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
-	//¼ÆËã¿Í»§Çø¾ØĞÎ´óĞ¡
+	//è®¡ç®—å®¢æˆ·åŒºçŸ©å½¢å¤§å°
 	::AdjustWindowRect(&clientSize, style, FALSE);
 	int w = clientSize.right - clientSize.left;
 	int h = clientSize.bottom - clientSize.top;
