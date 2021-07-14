@@ -72,6 +72,8 @@ matrix_t mvp;
 uint32_t *framebuffer = nullptr;
 float *zbuffer = nullptr;
 HDC screenDC;
+uint32_t *texture;
+int tex_width, tex_height;
 
 
 template <typename T, int n>
@@ -80,7 +82,8 @@ int array_size(T(&)[n])
 	return n;
 }
 
-int clamp(int x, int min, int max)
+template <typename T>
+T clamp(T x, T min, T max)
 {
 	return (x < min) ? min : ((x > max) ? max : x);
 }
@@ -96,6 +99,11 @@ uint32_t makefour(const color_t& color)
 		| to_color_int(color.g) << 8
 		| to_color_int(color.b) << 16
 		| to_color_int(color.a) << 24;
+}
+
+uint32_t lerp(uint32_t x1, uint32_t x2, float t)
+{
+	return (uint32_t)(x1 * (1.0f - t) + x2 * t);
 }
 
 float lerp(float x1, float x2, float t)
@@ -357,6 +365,27 @@ void matrix_set_perspective(matrix_t* m, float fovy, float aspect, float zn, flo
 	m->m[2][3] = 1;
 }
 
+uint32_t texture_sample(const texcoord_t& texcoord)
+{
+	float u = clamp(texcoord.u, 0.0f, 1.0f) * (tex_width - 1);
+	float v = clamp(texcoord.v, 0.0f, 1.0f) * (tex_height - 1);
+	int x0 = (int)(u);
+	int y0 = (int)(v);
+	int x1 = clamp(x0 + 1, 0, tex_width - 1);
+	int y1 = clamp(y0 + 1, 0, tex_height - 1);
+	uint32_t t00 = texture[y0 * tex_width + x0];
+	uint32_t t01 = texture[y1 * tex_width + x0];
+	uint32_t t10 = texture[y0 * tex_width + x1];
+	uint32_t t11 = texture[y1 * tex_width + x1];
+
+	float u_weight = u - x0;
+	float v_weight = v - y0;
+	uint32_t tu0 = lerp(t00, t10, u_weight);
+	uint32_t tu1 = lerp(t01, t11, u_weight);
+
+	return lerp(tu0, tu1, v_weight);
+
+}
 
 void pixel_process(vertex_t* v, vector_t c)
 {
@@ -432,6 +461,7 @@ void scan_horizontal(vertex_t* vl, vertex_t* vr, int y)
 		if (depth_test(i, y, p.pos_t.z))
 		{
 			uint32_t c = makefour(p.color);
+			c = texture_sample(p.uv);
 			write_pixel(i, y, c);
 			write_depth(i, y, z);
 		}
@@ -675,6 +705,18 @@ int main(void)
 
 	zbuffer = new float[width * height];
 	memset(zbuffer, 0, width * height * sizeof(float));
+
+	tex_width = 512;
+	tex_height = 512;
+	texture = new uint32_t[tex_width * tex_height];
+	for (int i = 0; i < tex_height; ++i)
+	{
+		for (int j = 0; j < tex_width; ++j)
+		{
+			int x = i / 32, y = j / 32;
+			texture[i * tex_width + j] = ((x + y) & 1) ? 0xffffff : 0x3fbcef;
+		}
+	}
 
 	screenDC = CreateCompatibleDC(GetDC(hwnd));
 
