@@ -29,7 +29,6 @@ struct texcoord_t
 struct vertex_t
 {
 	vector_t pos;
-	vector_t pos_t; // position post transform
 	texcoord_t uv;
 	color_t color;
 };
@@ -49,17 +48,18 @@ typedef struct {
 } scan_tri_t;
 
 vertex_t box_vb[8] = {
-	{ { -1, -1,  1, 1 }, { 0, 0, 0, 0 }, { 0, 0 }, { 1.0f, 0.2f, 0.2f } },
-	{ {  1, -1,  1, 1 }, { 0, 0, 0, 0 }, { 0, 1 }, { 0.2f, 1.0f, 0.2f } },
-	{ {  1,  1,  1, 1 }, { 0, 0, 0, 0 }, { 1, 1 }, { 0.2f, 0.2f, 1.0f } },
-	{ { -1,  1,  1, 1 }, { 0, 0, 0, 0 }, { 1, 0 }, { 1.0f, 0.2f, 1.0f } },
+	{ { -1, -1,  1, 1 }, { 0, 0 }, { 1.0f, 0.2f, 0.2f } },
+	{ {  1, -1,  1, 1 }, { 0, 1 }, { 0.2f, 1.0f, 0.2f } },
+	{ {  1,  1,  1, 1 }, { 1, 1 }, { 0.2f, 0.2f, 1.0f } },
+	{ { -1,  1,  1, 1 }, { 1, 0 }, { 1.0f, 0.2f, 1.0f } },
 
-	{ { -1, -1, -1, 1 }, { 0, 0, 0, 0 }, { 0, 0 }, { 1.0f, 1.0f, 0.2f } },
-	{ {  1, -1, -1, 1 }, { 0, 0, 0, 0 }, { 0, 1 }, { 0.2f, 1.0f, 1.0f } },
-	{ {  1,  1, -1, 1 }, { 0, 0, 0, 0 }, { 1, 1 }, { 1.0f, 0.3f, 0.3f } },
-	{ { -1,  1, -1, 1 }, { 0, 0, 0, 0 }, { 1, 0 }, { 0.2f, 1.0f, 0.3f } },
+	{ { -1, -1, -1, 1 }, { 0, 0 }, { 1.0f, 1.0f, 0.2f } },
+	{ {  1, -1, -1, 1 }, { 0, 1 }, { 0.2f, 1.0f, 1.0f } },
+	{ {  1,  1, -1, 1 }, { 1, 1 }, { 1.0f, 0.3f, 0.3f } },
+	{ { -1,  1, -1, 1 }, { 1, 0 }, { 0.2f, 1.0f, 0.3f } },
 };
 
+vertex_t vb_post[8]; // vertex buffer post transform
 
 HWND hwnd = 0;
 int width = 0, height = 0;
@@ -135,7 +135,7 @@ void lerp(color_t* p, const color_t* a, const color_t* b, float w)
 
 void lerp(vertex_t* p, const vertex_t* a, const vertex_t* b, float w)
 {
-	lerp(&p->pos_t, &a->pos_t, &b->pos_t, w);
+	lerp(&p->pos, &a->pos, &b->pos, w);
 	lerp(&p->uv, &a->uv, &b->uv, w);
 	lerp(&p->color, &a->color, &b->color, w);
 }
@@ -409,13 +409,23 @@ bool check_clip(vector_t *p)
 	return true;
 }
 
-void perspective_divide(vector_t* p)
+void perspective_divide(vertex_t* p)
 {
 	// the point with homogeneous coordinates [x, y, z, w] corresponds to the three-dimensional Cartesian point [x/w, y/w, z/w].
 	// to cvv coord x[-1, 1], y[-1, 1], z[0, 1]
-	p->x /= p->w;
-	p->y /= p->w;
-	p->z /= p->w;
+	float revw = 1.0f / p->pos.w;
+	p->pos.x *= revw;
+	p->pos.y *= revw;
+	p->pos.z *= revw;
+
+	p->uv.u *= revw;
+	p->uv.v *= revw;
+
+	p->color.r *= revw;
+	p->color.g *= revw;
+	p->color.b *= revw;
+	p->color.a *= revw;
+
 }
 
 void to_screen_coord(vector_t *p)
@@ -449,18 +459,20 @@ bool depth_test(int x, int y, float z)
 
 void scan_horizontal(vertex_t* vl, vertex_t* vr, int y)
 {
-	float dist = vr->pos_t.x - vl->pos_t.x;
-	int left = (int)(vl->pos_t.x + 0.5f);
-	int right = (int)(vr->pos_t.x + 0.5f);
+	float dist = vr->pos.x - vl->pos.x;
+	int left = (int)(vl->pos.x + 0.5f);
+	int right = (int)(vr->pos.x + 0.5f);
 	for (int i = left; i < right; ++i)
 	{
 		vertex_t p;
-		float w = (i - vl->pos_t.x) / dist;
+		float w = (i - vl->pos.x) / dist;
 		lerp(&p, vl, vr, w);
-		float z = p.pos_t.z;
-		if (depth_test(i, y, p.pos_t.z))
+		float z = p.pos.z;
+		if (depth_test(i, y, p.pos.z))
 		{
 			uint32_t c = makefour(p.color);
+			p.uv.u *= p.pos.w;
+			p.uv.v *= p.pos.w;
 			c = texture_sample(p.uv);
 			write_pixel(i, y, c);
 			write_depth(i, y, z);
@@ -471,16 +483,16 @@ void scan_horizontal(vertex_t* vl, vertex_t* vr, int y)
 
 void scan_triangle(scan_tri_t *sctri)
 {
-	if (sctri->l.pos_t.x > sctri->r.pos_t.x)
+	if (sctri->l.pos.x > sctri->r.pos.x)
 	{
 		std::swap(sctri->l, sctri->r);
 	}
 
-	assert(sctri->l.pos_t.y == sctri->r.pos_t.y);
+	assert(sctri->l.pos.y == sctri->r.pos.y);
 
-	float ymax = std::fmax(sctri->p.pos_t.y, sctri->l.pos_t.y);
-	float ymin = std::fmin(sctri->p.pos_t.y, sctri->l.pos_t.y);
-	float ydist = sctri->p.pos_t.y - sctri->l.pos_t.y;
+	float ymax = std::fmax(sctri->p.pos.y, sctri->l.pos.y);
+	float ymin = std::fmin(sctri->p.pos.y, sctri->l.pos.y);
+	float ydist = sctri->p.pos.y - sctri->l.pos.y;
 
 	int bottom = (int)(ymin + 0.5f);
 	int top = (int)(ymax + 0.5f);
@@ -498,28 +510,29 @@ void scan_triangle(scan_tri_t *sctri)
 
 }
 
-void vertex_process(const matrix_t* mvp, vertex_t& p)
+void vertex_process(const matrix_t* mvp, const vertex_t& v, vertex_t& p)
 {
-	matrix_apply(&p.pos_t, &p.pos, mvp);
-	perspective_divide(&p.pos_t);
-	to_screen_coord(&p.pos_t);
+	p = v;
+	matrix_apply(&p.pos, &v.pos, mvp);
+	perspective_divide(&p);
+	to_screen_coord(&p.pos);
 }
 
 void draw_triangle(const matrix_t* mvp, const vertex_t& p0, const vertex_t& p1, const vertex_t& p2)
 {
 	// degenerate triangle
-	if (p0.pos_t.y == p1.pos_t.y && p1.pos_t.y == p2.pos_t.y) return;
-	if (p0.pos_t.x == p1.pos_t.x && p1.pos_t.x == p2.pos_t.x) return;
+	if (p0.pos.y == p1.pos.y && p1.pos.y == p2.pos.y) return;
+	if (p0.pos.x == p1.pos.x && p1.pos.x == p2.pos.x) return;
 
 	scan_tri_t uptri, downtri;
-	if (p0.pos_t.y == p1.pos_t.y) // up triangle
+	if (p0.pos.y == p1.pos.y) // up triangle
 	{
 		uptri.p = p2;
 		uptri.l = p0;
 		uptri.r = p1;
 		scan_triangle(&uptri);
 	}
-	else if (p1.pos_t.y == p2.pos_t.y) // down triangle
+	else if (p1.pos.y == p2.pos.y) // down triangle
 	{
 		downtri.p = p0;
 		downtri.l = p1;
@@ -530,9 +543,9 @@ void draw_triangle(const matrix_t* mvp, const vertex_t& p0, const vertex_t& p1, 
 	{
 		vertex_t mid;
 		mid.pos.x = mid.pos.y = mid.pos.z = mid.pos.w = 0;
-		float w = (p1.pos_t.y - p0.pos_t.y) / (p2.pos_t.y - p0.pos_t.y);
+		float w = (p1.pos.y - p0.pos.y) / (p2.pos.y - p0.pos.y);
 		lerp(&mid, &p0, &p2, w);
-		mid.pos_t.y = p1.pos_t.y;
+		mid.pos.y = p1.pos.y;
 
 		uptri.p = p2;
 		uptri.l = mid;
@@ -564,15 +577,15 @@ void update()
 	memset(zbuffer, 0, width * height * sizeof(float));
 
 	angle_speed += 0.01f;
-	matrix_set_rotate(&model, -1.0f, -0.5f, 1.0f, cPI * angle_speed);
+	matrix_set_rotate(&model, 0.0f, 1.0f, 0.2f, cPI * angle_speed);
 
 	matrix_t mv;
 	matrix_mul(&mv, &model, &view);
 	matrix_mul(&mvp, &mv, &proj);
 
-	for (auto& v : box_vb)
-	{
-		vertex_process(&mvp, v);
+	for (int i = 0; i < array_size(box_vb); ++i)
+	{	
+		vertex_process(&mvp, box_vb[i], vb_post[i]);
 	}
 
 	int tri_num = array_size(box_ib) / 3;
@@ -582,29 +595,29 @@ void update()
 		int i1 = box_ib[i * 3 + 1];
 		int i2 = box_ib[i * 3 + 2];
 
-		//if (!check_clip(&p0.pos_t)) return;
-		//if (!check_clip(&p1.pos_t)) return;
-		//if (!check_clip(&p2.pos_t)) return;
+		//if (!check_clip(&p0.pos)) return;
+		//if (!check_clip(&p1.pos)) return;
+		//if (!check_clip(&p2.pos)) return;
 
 		vector_t v01, v02;
-		vector_sub(&v01, &box_vb[i1].pos_t, &box_vb[i0].pos_t);
-		vector_sub(&v02, &box_vb[i2].pos_t, &box_vb[i0].pos_t);
+		vector_sub(&v01, &vb_post[i1].pos, &vb_post[i0].pos);
+		vector_sub(&v02, &vb_post[i2].pos, &vb_post[i0].pos);
 
 		float det_xy = v01.x * v02.y - v01.y * v02.x;
-		if (det_xy >= 0.0f)
+		if (det_xy < 0.0f)
 		{
 			// backface culling
 			continue;
 		}
 
-		vertex_t* p0 = &box_vb[i0];
-		vertex_t* p1 = &box_vb[i1];
-		vertex_t* p2 = &box_vb[i2];
+		vertex_t* p0 = &vb_post[i0];
+		vertex_t* p1 = &vb_post[i1];
+		vertex_t* p2 = &vb_post[i2];
 
 		// make sure p0y <= p1y <= p2y
-		if (p0->pos_t.y > p1->pos_t.y) std::swap(p0, p1);
-		if (p0->pos_t.y > p2->pos_t.y) std::swap(p0, p2);
-		if (p1->pos_t.y > p2->pos_t.y) std::swap(p1, p2);
+		if (p0->pos.y > p1->pos.y) std::swap(p0, p1);
+		if (p0->pos.y > p2->pos.y) std::swap(p0, p2);
+		if (p1->pos.y > p2->pos.y) std::swap(p1, p2);
 
 		draw_triangle(&mvp, *p0, *p1, *p2);
 
@@ -700,9 +713,6 @@ int main(void)
 	height = 600;
 	hwnd = init_window(GetModuleHandle(NULL), _T("sr3d"), width, height);
 
-	framebuffer = new uint32_t[width * height];
-	memset(framebuffer, 0, width * height * sizeof(uint32_t));
-
 	zbuffer = new float[width * height];
 	memset(zbuffer, 0, width * height * sizeof(float));
 
@@ -742,6 +752,6 @@ int main(void)
 
 	main_loop();
 
-
 	return 0;
+
 }
