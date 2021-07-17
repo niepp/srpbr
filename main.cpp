@@ -91,8 +91,6 @@ uint8_t to_color_int(float c)
 	int cint = (int)(c * 255.0f + 0.5);
 	cint = clamp(cint, 0, 255);
 	return (uint8_t)cint;
-
-//	return (uint8_t)(c * 255.0f + 0.5);
 }
 
 uint32_t makefour(const vector_t& color)
