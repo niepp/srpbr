@@ -5,6 +5,7 @@
 
 const float cEpslion = 1e-6f;
 const float cPI = 3.1415926f;
+const float cRevt255 = 1.0f / 255.0f;
 
 struct matrix_t
 {
@@ -72,7 +73,7 @@ float *zbuffer = nullptr;
 HDC screenDC;
 uint32_t *texture;
 int tex_width, tex_height;
-shading_model_t shading_model = shading_model_t::cSM_Color;
+shading_model_t shading_model = shading_model_t::cSM_Texture;
 
 template <typename T, int n>
 int array_size(T(&)[n])
@@ -99,6 +100,14 @@ uint32_t makefour(const vector_t& color)
 		| to_color_int(color.g) << 8
 		| to_color_int(color.b) << 16
 		| to_color_int(color.a) << 24;
+}
+
+void to_color(uint32_t cint, vector_t& color)
+{
+	color.r = cRevt255 * (cint & 0xff);
+	color.g = cRevt255 * ((cint >> 8) & 0xff);
+	color.b = cRevt255 * ((cint >> 16) & 0xff);
+	color.a = cRevt255 * ((cint >> 24) & 0xff);
 }
 
 uint32_t lerp(uint32_t x1, uint32_t x2, float t)
@@ -381,10 +390,20 @@ uint32_t texture_sample(const texcoord_t& texcoord)
 
 	float u_weight = u - x0;
 	float v_weight = v - y0;
-	uint32_t tu0 = lerp(t00, t10, u_weight);
-	uint32_t tu1 = lerp(t01, t11, u_weight);
 
-	return lerp(tu0, tu1, v_weight);
+	vector_t c00, c10, c01, c11;
+	to_color(t00, c00);	
+	to_color(t10, c10);
+	to_color(t01, c01);
+	to_color(t11, c11);
+
+	// bilinear interpolation
+	vector_t tu0, tu1, c;
+	lerp(&tu0, &c00, &c10, u_weight);
+	lerp(&tu1, &c01, &c11, u_weight);
+	lerp(&c, &tu0, &tu1, v_weight);
+	
+	return makefour(c);
 
 }
 
@@ -470,7 +489,7 @@ void scan_triangle(scan_tri_t *sctri)
 	vertex_t vl, vr;
 	for (int i = bottom; i < top; ++i)
 	{
-		float cury = i;
+		float cury = i + 0.0f;
 		float w = ydist > 0 ? (cury - ymin) / ydist : (cury - ymax) / ydist;
 		w = clamp(w, 0.0f, 1.0f);
 		lerp(&vl, &sctri->l, &sctri->p, w);
