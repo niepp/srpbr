@@ -47,17 +47,6 @@ typedef struct {
 	vertex_t l, r;
 } scan_tri_t;
 
-vertex_t box_vb[8] = {
-	{ { -1, -1,  1, 1 }, { 0, 0 }, { 1.0f, 0.2f, 0.2f } },
-	{ {  1, -1,  1, 1 }, { 0, 1 }, { 0.2f, 1.0f, 0.2f } },
-	{ {  1,  1,  1, 1 }, { 1, 1 }, { 0.2f, 0.2f, 1.0f } },
-	{ { -1,  1,  1, 1 }, { 1, 0 }, { 1.0f, 0.2f, 1.0f } },
-
-	{ { -1, -1, -1, 1 }, { 0, 0 }, { 1.0f, 1.0f, 0.2f } },
-	{ {  1, -1, -1, 1 }, { 0, 1 }, { 0.2f, 1.0f, 1.0f } },
-	{ {  1,  1, -1, 1 }, { 1, 1 }, { 1.0f, 0.3f, 0.3f } },
-	{ { -1,  1, -1, 1 }, { 1, 0 }, { 0.2f, 1.0f, 0.3f } },
-};
 
 vertex_t vb_post[8]; // vertex buffer post transform
 
@@ -387,53 +376,6 @@ uint32_t texture_sample(const texcoord_t& texcoord)
 
 }
 
-void pixel_process(vertex_t* v, vector_t c)
-{
-
-}
-
-void project_divid(vector_t* p)
-{
-	// to cvv coord x[-1, 1], y[-1, 1], z[0, 1]
-	p->x /= p->w;
-	p->y /= p->w;
-	p->z /= p->w;
-
-}
-
-bool check_clip(vector_t *p)
-{
-	if (p->x < -1.0f || p->x > 1.0f) return false;
-	if (p->y < -1.0f || p->y > 1.0f) return false;
-	if (p->z < 0.0f || p->z > 1.0f) return false;
-	return true;
-}
-
-void perspective_divide(vertex_t* p)
-{
-	// the point with homogeneous coordinates [x, y, z, w] corresponds to the three-dimensional Cartesian point [x/w, y/w, z/w].
-	// to cvv coord x[-1, 1], y[-1, 1], z[0, 1]
-	float revw = 1.0f / p->pos.w;
-	p->pos.x *= revw;
-	p->pos.y *= revw;
-	p->pos.z *= revw;
-
-	p->uv.u *= revw;
-	p->uv.v *= revw;
-
-	p->color.r *= revw;
-	p->color.g *= revw;
-	p->color.b *= revw;
-	p->color.a *= revw;
-
-}
-
-void to_screen_coord(vector_t *p)
-{
-	// to screen coord x[0, width], y[0, height], z[0, 1] (depth)
-	p->x = (p->x + 1.0f) * 0.5f * width;
-	p->y = height - 1 - (p->y + 1.0f) * 0.5f * height;
-}
 
 void write_pixel(int x, int y, uint32_t color)
 {
@@ -510,6 +452,45 @@ void scan_triangle(scan_tri_t *sctri)
 
 }
 
+void pixel_process(vertex_t* v, vector_t c)
+{
+
+}
+
+bool check_clip(vector_t* p)
+{
+	if (p->x < -1.0f || p->x > 1.0f) return false;
+	if (p->y < -1.0f || p->y > 1.0f) return false;
+	if (p->z < 0.0f || p->z > 1.0f) return false;
+	return true;
+}
+
+void perspective_divide(vertex_t* p)
+{
+	// the point with homogeneous coordinates [x, y, z, w] corresponds to the three-dimensional Cartesian point [x/w, y/w, z/w].
+	// to cvv coord x[-1, 1], y[-1, 1], z[0, 1]
+	float revw = 1.0f / p->pos.w;
+	p->pos.x *= revw;
+	p->pos.y *= revw;
+	p->pos.z *= revw;
+
+	p->uv.u *= revw;
+	p->uv.v *= revw;
+
+	p->color.r *= revw;
+	p->color.g *= revw;
+	p->color.b *= revw;
+	p->color.a *= revw;
+
+}
+
+void to_screen_coord(vector_t* p)
+{
+	// to screen coord x[0, width], y[0, height], z[0, 1] (depth)
+	p->x = (p->x + 1.0f) * 0.5f * width;
+	p->y = height - 1 - (p->y + 1.0f) * 0.5f * height;
+}
+
 void vertex_process(const matrix_t* mvp, const vertex_t& v, vertex_t& p)
 {
 	p = v;
@@ -561,6 +542,18 @@ void draw_triangle(const matrix_t* mvp, const vertex_t& p0, const vertex_t& p1, 
 	}
 
 }
+
+vertex_t box_vb[8] = {
+	{ { -1, -1,  1, 1 }, { 0, 0 }, { 1.0f, 0.2f, 0.2f } },
+	{ {  1, -1,  1, 1 }, { 0, 1 }, { 0.2f, 1.0f, 0.2f } },
+	{ {  1,  1,  1, 1 }, { 1, 1 }, { 0.2f, 0.2f, 1.0f } },
+	{ { -1,  1,  1, 1 }, { 1, 0 }, { 1.0f, 0.2f, 1.0f } },
+
+	{ { -1, -1, -1, 1 }, { 0, 0 }, { 1.0f, 1.0f, 0.2f } },
+	{ {  1, -1, -1, 1 }, { 0, 1 }, { 0.2f, 1.0f, 1.0f } },
+	{ {  1,  1, -1, 1 }, { 1, 1 }, { 1.0f, 0.3f, 0.3f } },
+	{ { -1,  1, -1, 1 }, { 1, 0 }, { 0.2f, 1.0f, 0.3f } },
+};
 
 int box_ib[] = {
 	0, 1, 2,  2, 3, 0,
