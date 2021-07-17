@@ -12,13 +12,19 @@ struct matrix_t
 };
 
 struct vector_t
-{ 
-	float x, y, z, w; 
-};
-
-struct color_t
 {
-	float r, g, b, a;
+	union
+	{
+		float vec[4];
+		struct
+		{
+			float x, y, z, w;
+		};
+		struct
+		{
+			float r, g, b, a;
+		};
+	};
 };
 
 struct texcoord_t
@@ -30,10 +36,11 @@ struct vertex_t
 {
 	vector_t pos;
 	texcoord_t uv;
-	color_t color;
+	vector_t color;
 };
 
 /*
+ 有一边是水平的三角形
  l----------r
   \        /
    \      /
@@ -47,12 +54,14 @@ typedef struct {
 	vertex_t l, r;
 } scan_tri_t;
 
-
-vertex_t vb_post[8]; // vertex buffer post transform
+enum class shading_model_t {
+	cSM_Color = 0,
+	cSM_Texture = 1,
+};
 
 HWND hwnd = 0;
 int width = 0, height = 0;
-float angle_speed = 0.25f;
+float angle_speed = 0.85f;
 matrix_t model;
 matrix_t view;
 matrix_t proj;
@@ -63,7 +72,7 @@ float *zbuffer = nullptr;
 HDC screenDC;
 uint32_t *texture;
 int tex_width, tex_height;
-
+shading_model_t shading_model = shading_model_t::cSM_Color;
 
 template <typename T, int n>
 int array_size(T(&)[n])
@@ -79,10 +88,14 @@ T clamp(T x, T min, T max)
 
 uint8_t to_color_int(float c)
 {
-	return (uint8_t)(c * 255.0f + 0.5);
+	int cint = (int)(c * 255.0f + 0.5);
+	cint = clamp(cint, 0, 255);
+	return (uint8_t)cint;
+
+//	return (uint8_t)(c * 255.0f + 0.5);
 }
 
-uint32_t makefour(const color_t& color)
+uint32_t makefour(const vector_t& color)
 {
 	return to_color_int(color.r)
 		| to_color_int(color.g) << 8
@@ -114,14 +127,6 @@ void lerp(vector_t* p, const vector_t* a, const vector_t* b, float w)
 	p->w = lerp(a->w, b->w, w);
 }
 
-void lerp(color_t* p, const color_t* a, const color_t* b, float w)
-{
-	p->r = lerp(a->r, b->r, w);
-	p->g = lerp(a->g, b->g, w);
-	p->b = lerp(a->b, b->b, w);
-	p->a = lerp(a->a, b->a, w);
-}
-
 void lerp(vertex_t* p, const vertex_t* a, const vertex_t* b, float w)
 {
 	lerp(&p->pos, &a->pos, &b->pos, w);
@@ -151,6 +156,15 @@ void vector_sub(vector_t* c, const vector_t* a, const vector_t* b)
 	c->x = a->x - b->x;
 	c->y = a->y - b->y;
 	c->z = a->z - b->z;
+	c->w = 1.0;
+}
+
+// c = a * f
+void vector_scale(vector_t* c, const vector_t* a, float f)
+{
+	c->x = a->x * f;
+	c->y = a->y * f;
+	c->z = a->z * f;
 	c->w = 1.0;
 }
 
@@ -399,6 +413,28 @@ bool depth_test(int x, int y, float z)
 	return z >= nowz;
 }
 
+void pixel_process(int x, int y, const vertex_t& p)
+{
+	uint32_t c = 0;
+	if (shading_model == shading_model_t::cSM_Color)
+	{
+		vector_t color;
+		vector_scale(&color, &p.color, p.pos.w);
+		c = makefour(color);
+	}
+	else if (shading_model == shading_model_t::cSM_Texture)
+	{
+		texcoord_t uv = p.uv;
+		uv.u *= p.pos.w;
+		uv.v *= p.pos.w;
+		c = texture_sample(uv);
+	}
+
+	write_pixel(x, y, c);
+	write_depth(x, y, p.pos.z);
+}
+
+
 void scan_horizontal(vertex_t* vl, vertex_t* vr, int y)
 {
 	float dist = vr->pos.x - vl->pos.x;
@@ -409,15 +445,9 @@ void scan_horizontal(vertex_t* vl, vertex_t* vr, int y)
 		vertex_t p;
 		float w = (i - vl->pos.x) / dist;
 		lerp(&p, vl, vr, w);
-		float z = p.pos.z;
 		if (depth_test(i, y, p.pos.z))
 		{
-			uint32_t c = makefour(p.color);
-			p.uv.u *= p.pos.w;
-			p.uv.v *= p.pos.w;
-			c = texture_sample(p.uv);
-			write_pixel(i, y, c);
-			write_depth(i, y, z);
+			pixel_process(i, y, p);
 		}
 	}
 
@@ -442,7 +472,7 @@ void scan_triangle(scan_tri_t *sctri)
 	vertex_t vl, vr;
 	for (int i = bottom; i < top; ++i)
 	{
-		float cury = i + 0.5f;
+		float cury = i +0.5f;
 		float w = ydist > 0 ? (cury - ymin) / ydist : (cury - ymax) / ydist;
 		assert(w >= 0 && w <= 1.0f);
 		lerp(&vl, &sctri->l, &sctri->p, w);
@@ -452,10 +482,6 @@ void scan_triangle(scan_tri_t *sctri)
 
 }
 
-void pixel_process(vertex_t* v, vector_t c)
-{
-
-}
 
 bool check_clip(vector_t* p)
 {
@@ -543,34 +569,49 @@ void draw_triangle(const matrix_t* mvp, const vertex_t& p0, const vertex_t& p1, 
 
 }
 
-vertex_t box_vb[8] = {
-	{ { -1, -1,  1, 1 }, { 0, 0 }, { 1.0f, 0.2f, 0.2f } },
-	{ {  1, -1,  1, 1 }, { 0, 1 }, { 0.2f, 1.0f, 0.2f } },
-	{ {  1,  1,  1, 1 }, { 1, 1 }, { 0.2f, 0.2f, 1.0f } },
-	{ { -1,  1,  1, 1 }, { 1, 0 }, { 1.0f, 0.2f, 1.0f } },
+vertex_t box_vb[12] = {
+	{ { -1, -1, -1, 1 }, { 0, 0 }, { 1, 0, 0 } },
+	{ { -1,  1, -1, 1 }, { 0, 1 }, { 0, 1, 0 } },
 
-	{ { -1, -1, -1, 1 }, { 0, 0 }, { 1.0f, 1.0f, 0.2f } },
-	{ {  1, -1, -1, 1 }, { 0, 1 }, { 0.2f, 1.0f, 1.0f } },
-	{ {  1,  1, -1, 1 }, { 1, 1 }, { 1.0f, 0.3f, 0.3f } },
-	{ { -1,  1, -1, 1 }, { 1, 0 }, { 0.2f, 1.0f, 0.3f } },
+	{ { -1, -1,  1, 1 }, { 1, 0 }, { 0, 0, 1 } },
+	{ { -1,  1,  1, 1 }, { 1, 1 }, { 1, 0, 0 } },
+
+	{ { 1, -1,  1, 1 }, { 0, 0 }, { 1, 0, 0 } },
+	{ { 1,  1,  1, 1 }, { 0, 1 }, { 0, 1, 0 } },
+
+	{ { 1, -1, -1, 1 }, { 1, 0 }, { 0, 0, 1 } },
+	{ { 1,  1, -1, 1 }, { 1, 1 }, { 1, 0, 0 } },
+
+	{ { -1,  1, -1, 1 }, { 1, 0 }, { 0, 1, 0 } },
+	{ { 1,  1, -1, 1 }, { 0, 0 }, { 1, 0, 0 } },
+
+	{ { -1, -1, -1, 1 }, { 1, 1 }, { 1, 0, 0 } },
+	{ { 1, -1, -1, 1 }, { 0, 1 }, { 0, 0, 1 } },
+
 };
 
 int box_ib[] = {
-	0, 1, 2,  2, 3, 0,
-	7, 6, 5,  5, 4, 7,
-	0, 4, 5,  5, 1, 0,
-	1, 5, 6,  6, 2, 1,
-	2, 6, 7,  7, 3, 2,
-	3, 7, 4,  4, 0, 3,
+	0, 1, 3,  3, 2, 0,
+	2, 3, 5,  5, 4, 2,
+	4, 5, 7,  7, 6, 4,
+	6, 7, 1,  1, 0, 6,
+	3, 8, 9,  9, 5, 3,
+	2, 4, 11, 11, 10, 2,
 };
+
+int box_ib1[] = {
+	3, 8, 9, 
+};
+
+vertex_t vb_post[12]; // vertex buffer post transform
 
 void update()
 {
 	memset(framebuffer, 0, width * height * sizeof(uint32_t));
 	memset(zbuffer, 0, width * height * sizeof(float));
 
-	angle_speed += 0.01f;
-	matrix_set_rotate(&model, 0.0f, 1.0f, 0.2f, cPI * angle_speed);
+//	angle_speed += 0.0001f;
+	matrix_set_rotate(&model, 0.5f, 0.5f, 0.5f, cPI *  1.0f);
 
 	matrix_t mv;
 	matrix_mul(&mv, &model, &view);
@@ -597,7 +638,7 @@ void update()
 		vector_sub(&v02, &vb_post[i2].pos, &vb_post[i0].pos);
 
 		float det_xy = v01.x * v02.y - v01.y * v02.x;
-		if (det_xy < 0.0f)
+		if (det_xy > 0.0f)
 		{
 			// backface culling
 			continue;
@@ -652,6 +693,17 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CREATE:
 		break;
 	case WM_KEYDOWN:
+		switch (wParam & 511)
+		{
+		case 'C':
+			if (shading_model == shading_model_t::cSM_Color)
+				shading_model = shading_model_t::cSM_Texture;
+			else if (shading_model == shading_model_t::cSM_Texture)
+				shading_model = shading_model_t::cSM_Color;
+			break;
+		default:
+			break;
+		}
 		break;
 	case WM_SIZE:
 	case WM_EXITSIZEMOVE:
