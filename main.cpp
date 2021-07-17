@@ -432,11 +432,11 @@ void pixel_process(int x, int y, const vertex_t& p)
 	write_depth(x, y, p.pos.z);
 }
 
-
 void scan_horizontal(vertex_t* vl, vertex_t* vr, int y)
 {
 	float dist = vr->pos.x - vl->pos.x;
-	int left = (int)(vl->pos.x + 0.5f);
+	// left要往小取整，right要往大取整，避免三角形之间的接缝空隙！
+	int left = (int)(vl->pos.x);
 	int right = (int)(vr->pos.x + 0.5f);
 	for (int i = left; i < right; ++i)
 	{
@@ -448,7 +448,6 @@ void scan_horizontal(vertex_t* vl, vertex_t* vr, int y)
 			pixel_process(i, y, p);
 		}
 	}
-
 }
 
 void scan_triangle(scan_tri_t *sctri)
@@ -464,15 +463,16 @@ void scan_triangle(scan_tri_t *sctri)
 	float ymin = std::fmin(sctri->p.pos.y, sctri->l.pos.y);
 	float ydist = sctri->p.pos.y - sctri->l.pos.y;
 
-	int bottom = (int)(ymin + 0.5f);
+	// bottom要往小取整，top要往大取整，避免三角形之间的接缝空隙！
+	int bottom = (int)(ymin + 0.0f);
 	int top = (int)(ymax + 0.5f);
 
 	vertex_t vl, vr;
 	for (int i = bottom; i < top; ++i)
 	{
-		float cury = i +0.5f;
+		float cury = i;
 		float w = ydist > 0 ? (cury - ymin) / ydist : (cury - ymax) / ydist;
-		assert(w >= 0 && w <= 1.0f);
+		w = clamp(w, 0.0f, 1.0f);
 		lerp(&vl, &sctri->l, &sctri->p, w);
 		lerp(&vr, &sctri->r, &sctri->p, w);
 		scan_horizontal(&vl, &vr, i);
@@ -588,7 +588,7 @@ vertex_t box_vb[12] = {
 
 };
 
-int box_ib[] = {
+int box_ib1[] = {
 	0, 1, 3,  3, 2, 0,
 	2, 3, 5,  5, 4, 2,
 	4, 5, 7,  7, 6, 4,
@@ -597,8 +597,9 @@ int box_ib[] = {
 	2, 4, 11, 11, 10, 2,
 };
 
-int box_ib1[] = {
+int box_ib[] = {
 	3, 8, 9, 
+	9, 5, 3,
 };
 
 vertex_t vb_post[12]; // vertex buffer post transform
