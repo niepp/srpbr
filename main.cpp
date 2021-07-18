@@ -796,14 +796,14 @@ int main(void)
 		for (int j = 0; j < tex_width; ++j)
 		{
 			int x = i / 32, y = j / 32;
-			texture[i * tex_width + j] = ((x + y) & 1) ? 0xffffff : 0x3fbcef;
+			texture[i * tex_width + j] = ((x + y) & 1) ? 0xffffff : 0x5aafc3;
 		}
 	}
 
 	screenDC = CreateCompatibleDC(GetDC(hwnd));
 
 	BITMAPINFO bi = {
-		{ sizeof(BITMAPINFOHEADER), width, -height, 1, 32, BI_RGB, width * height * 4, 0, 0, 0, 0 }
+		{ sizeof(BITMAPINFOHEADER), width, height, 1, 32, BI_RGB, width * height * 4, 0, 0, 0, 0 }
 	};
 
 	HBITMAP screenBMP = CreateDIBSection(screenDC, &bi, DIB_RGB_COLORS, (void**)&framebuffer, 0, 0);
