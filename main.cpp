@@ -62,7 +62,8 @@ enum class shading_model_t {
 
 HWND hwnd = 0;
 int width = 0, height = 0;
-float angle_speed = 0.85f;
+float angle_speed = 1.0f;
+float eyedist = 3.5f;
 matrix_t model;
 matrix_t view;
 matrix_t proj;
@@ -74,6 +75,38 @@ HDC screenDC;
 uint32_t *texture;
 int tex_width, tex_height;
 shading_model_t shading_model = shading_model_t::cSM_Texture;
+
+vertex_t box_vb[12] = {
+	{ { -1, -1, -1, 1 }, { 0, 0 }, { 1, 0, 0 } },
+	{ { -1,  1, -1, 1 }, { 0, 1 }, { 0, 1, 0 } },
+
+	{ { -1, -1,  1, 1 }, { 1, 0 }, { 0, 0, 1 } },
+	{ { -1,  1,  1, 1 }, { 1, 1 }, { 1, 0, 0 } },
+
+	{ { 1, -1,  1, 1 }, { 0, 0 }, { 1, 0, 0 } },
+	{ { 1,  1,  1, 1 }, { 0, 1 }, { 0, 1, 0 } },
+
+	{ { 1, -1, -1, 1 }, { 1, 0 }, { 0, 0, 1 } },
+	{ { 1,  1, -1, 1 }, { 1, 1 }, { 1, 0, 0 } },
+
+	{ { -1,  1, -1, 1 }, { 1, 0 }, { 0, 1, 0 } },
+	{ { 1,  1, -1, 1 }, { 0, 0 }, { 1, 0, 0 } },
+
+	{ { -1, -1, -1, 1 }, { 1, 1 }, { 1, 0, 0 } },
+	{ { 1, -1, -1, 1 }, { 0, 1 }, { 0, 0, 1 } },
+
+};
+
+int box_ib[] = {
+	0, 1, 3,  3, 2, 0,
+	2, 3, 5,  5, 4, 2,
+	4, 5, 7,  7, 6, 4,
+	6, 7, 1,  1, 0, 6,
+	3, 8, 9,  9, 5, 3,
+	2, 4, 11, 11, 10, 2,
+};
+
+vertex_t vb_post[12]; // vertex buffer post transform
 
 template <typename T, int n>
 int array_size(T(&)[n])
@@ -442,8 +475,8 @@ void pixel_process(int x, int y, const vertex_t& p)
 	else if (shading_model == shading_model_t::cSM_Texture)
 	{
 		texcoord_t uv = p.uv;
-		uv.u *= p.pos.w;
-		uv.v *= p.pos.w;
+		uv.u /= p.pos.w;
+		uv.v /= p.pos.w;
 		c = texture_sample(uv);
 	}
 
@@ -461,6 +494,7 @@ void scan_horizontal(vertex_t* vl, vertex_t* vr, int y)
 	{
 		vertex_t p;
 		float w = (i - vl->pos.x) / dist;
+		w = clamp(w, 0.0f, 1.0f);
 		lerp(&p, vl, vr, w);
 		if (depth_test(i, y, p.pos.z))
 		{
@@ -477,6 +511,7 @@ void scan_triangle(scan_tri_t *sctri)
 	}
 
 	assert(sctri->l.pos.y == sctri->r.pos.y);
+	assert(sctri->l.pos.y != sctri->p.pos.y);
 
 	float ymax = std::fmax(sctri->p.pos.y, sctri->l.pos.y);
 	float ymin = std::fmin(sctri->p.pos.y, sctri->l.pos.y);
@@ -490,7 +525,7 @@ void scan_triangle(scan_tri_t *sctri)
 	for (int i = bottom; i < top; ++i)
 	{
 		float cury = i + 0.0f;
-		float w = ydist > 0 ? (cury - ymin) / ydist : (cury - ymax) / ydist;
+		float w = (ydist > 0 ? cury - ymin : cury - ymax) / ydist;
 		w = clamp(w, 0.0f, 1.0f);
 		lerp(&vl, &sctri->l, &sctri->p, w);
 		lerp(&vr, &sctri->r, &sctri->p, w);
@@ -499,11 +534,10 @@ void scan_triangle(scan_tri_t *sctri)
 
 }
 
-
-bool check_clip(vector_t* p)
+bool check_clip(vector_t* p, float width, float height)
 {
-	if (p->x < -1.0f || p->x > 1.0f) return false;
-	if (p->y < -1.0f || p->y > 1.0f) return false;
+	if (p->x < 0 || p->x >= height) return false;
+	if (p->y < 0 || p->y >= height) return false;
 	if (p->z < 0.0f || p->z > 1.0f) return false;
 	return true;
 }
@@ -516,6 +550,7 @@ void perspective_divide(vertex_t* p)
 	p->pos.x *= revw;
 	p->pos.y *= revw;
 	p->pos.z *= revw;
+	p->pos.w = revw; // 这里存1/w，因为透视校正原因，1/w才有线性关系： 1/p.w = lerp(1/p0.w, 1/p1.w, weight)
 
 	p->uv.u *= revw;
 	p->uv.v *= revw;
@@ -566,7 +601,6 @@ void draw_triangle(const matrix_t* mvp, const vertex_t& p0, const vertex_t& p1, 
 	else
 	{
 		vertex_t mid;
-		mid.pos.x = mid.pos.y = mid.pos.z = mid.pos.w = 0;
 		float w = (p1.pos.y - p0.pos.y) / (p2.pos.y - p0.pos.y);
 		lerp(&mid, &p0, &p2, w);
 		mid.pos.y = p1.pos.y;
@@ -586,57 +620,25 @@ void draw_triangle(const matrix_t* mvp, const vertex_t& p0, const vertex_t& p1, 
 
 }
 
-vertex_t box_vb[12] = {
-	{ { -1, -1, -1, 1 }, { 0, 0 }, { 1, 0, 0 } },
-	{ { -1,  1, -1, 1 }, { 0, 1 }, { 0, 1, 0 } },
-
-	{ { -1, -1,  1, 1 }, { 1, 0 }, { 0, 0, 1 } },
-	{ { -1,  1,  1, 1 }, { 1, 1 }, { 1, 0, 0 } },
-
-	{ { 1, -1,  1, 1 }, { 0, 0 }, { 1, 0, 0 } },
-	{ { 1,  1,  1, 1 }, { 0, 1 }, { 0, 1, 0 } },
-
-	{ { 1, -1, -1, 1 }, { 1, 0 }, { 0, 0, 1 } },
-	{ { 1,  1, -1, 1 }, { 1, 1 }, { 1, 0, 0 } },
-
-	{ { -1,  1, -1, 1 }, { 1, 0 }, { 0, 1, 0 } },
-	{ { 1,  1, -1, 1 }, { 0, 0 }, { 1, 0, 0 } },
-
-	{ { -1, -1, -1, 1 }, { 1, 1 }, { 1, 0, 0 } },
-	{ { 1, -1, -1, 1 }, { 0, 1 }, { 0, 0, 1 } },
-
-};
-
-int box_ib1[] = {
-	0, 1, 3,  3, 2, 0,
-	2, 3, 5,  5, 4, 2,
-	4, 5, 7,  7, 6, 4,
-	6, 7, 1,  1, 0, 6,
-	3, 8, 9,  9, 5, 3,
-	2, 4, 11, 11, 10, 2,
-};
-
-int box_ib[] = {
-	3, 8, 9, 
-	9, 5, 3,
-};
-
-vertex_t vb_post[12]; // vertex buffer post transform
-
 void update()
 {
 	memset(framebuffer, 0, width * height * sizeof(uint32_t));
 	memset(zbuffer, 0, width * height * sizeof(float));
 
-//	angle_speed += 0.0001f;
-	matrix_set_rotate(&model, 0.5f, 0.5f, 0.5f, cPI *  1.0f);
+	angle_speed += 0.008f;
+	matrix_set_rotate(&model, -1, -0.5, 1, angle_speed);
+
+	vector_t eye = { eyedist, 0.0f, 0.0f, 1.0f };
+	vector_t at = { 0.0f, 0.0f, 0.0f, 1.0f };
+	vector_t up = { 0.0f, 0.0f, 1.0f, 1.0f };
+	matrix_set_lookat(&view, &eye, &at, &up);
 
 	matrix_t mv;
 	matrix_mul(&mv, &model, &view);
 	matrix_mul(&mvp, &mv, &proj);
 
 	for (int i = 0; i < array_size(box_vb); ++i)
-	{	
+	{
 		vertex_process(&mvp, box_vb[i], vb_post[i]);
 	}
 
@@ -646,10 +648,6 @@ void update()
 		int i0 = box_ib[i * 3 + 0];
 		int i1 = box_ib[i * 3 + 1];
 		int i2 = box_ib[i * 3 + 2];
-
-		//if (!check_clip(&p0.pos)) return;
-		//if (!check_clip(&p1.pos)) return;
-		//if (!check_clip(&p2.pos)) return;
 
 		vector_t v01, v02;
 		vector_sub(&v01, &vb_post[i1].pos, &vb_post[i0].pos);
@@ -666,6 +664,10 @@ void update()
 		vertex_t* p1 = &vb_post[i1];
 		vertex_t* p2 = &vb_post[i2];
 
+		if (!check_clip(&p0->pos, width, height)) return;
+		if (!check_clip(&p1->pos, width, height)) return;
+		if (!check_clip(&p2->pos, width, height)) return;
+
 		// make sure p0y <= p1y <= p2y
 		if (p0->pos.y > p1->pos.y) std::swap(p0, p1);
 		if (p0->pos.y > p2->pos.y) std::swap(p0, p2);
@@ -678,6 +680,7 @@ void update()
 	HDC hDC = GetDC(hwnd);
 	BitBlt(hDC, 0, 0, width, height, screenDC, 0, 0, SRCCOPY);
 	ReleaseDC(hwnd, hDC);
+
 }
 
 
@@ -718,6 +721,12 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 				shading_model = shading_model_t::cSM_Texture;
 			else if (shading_model == shading_model_t::cSM_Texture)
 				shading_model = shading_model_t::cSM_Color;
+			break;
+		case VK_UP:
+			eyedist += 0.1f;
+			break;
+		case VK_DOWN:
+			eyedist -= 0.1f;
 			break;
 		default:
 			break;
@@ -807,11 +816,6 @@ int main(void)
 
 	float aspect = 1.0f * width / height;
 	matrix_set_perspective(&proj, cPI * 0.5f, aspect, 1.0f, 500.0f);
-
-	vector_t eye = { 3.0f, 0.0f, 0.0f, 1.0f };
-	vector_t at = { 0.0f, 0.0f, 0.0f, 1.0f };
-	vector_t up = { 0.0f, 0.0f, 1.0f, 1.0f };
-	matrix_set_lookat(&view, &eye, &at, &up);
 
 	main_loop();
 
