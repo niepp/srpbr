@@ -469,7 +469,7 @@ void pixel_process(int x, int y, const vertex_t& p)
 	if (shading_model == shading_model_t::cSM_Color)
 	{
 		vector_t color;
-		vector_scale(&color, &p.color, p.pos.w);
+		vector_scale(&color, &p.color, 1 / p.pos.w);
 		c = makefour(color);
 	}
 	else if (shading_model == shading_model_t::cSM_Texture)
