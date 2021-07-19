@@ -3,6 +3,9 @@
 #include <iostream>
 #include <cassert>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 const float cEpslion = 1e-6f;
 const float cPI = 3.1415926f;
 const float cRevt255 = 1.0f / 255.0f;
@@ -60,7 +63,13 @@ enum class shading_model_t {
 	cSM_Texture = 1,
 };
 
+
+float reci_freq;
+int64_t tick_start;
+uint32_t frame_count = 0, frame_rate = 0;
 HWND hwnd = 0;
+HDC screenDC;
+
 int width = 0, height = 0;
 float angle_speed = 1.0f;
 float eyedist = 3.5f;
@@ -71,7 +80,6 @@ matrix_t mvp;
 
 uint32_t *framebuffer = nullptr;
 float *zbuffer = nullptr;
-HDC screenDC;
 uint32_t *texture;
 int tex_width, tex_height;
 shading_model_t shading_model = shading_model_t::cSM_Texture;
@@ -435,7 +443,7 @@ uint32_t texture_sample(const texcoord_t& texcoord)
 	lerp(&tu0, &c00, &c10, u_weight);
 	lerp(&tu1, &c01, &c11, u_weight);
 	lerp(&c, &tu0, &tu1, v_weight);
-	
+
 	return makefour(c);
 
 }
@@ -534,7 +542,7 @@ void scan_triangle(scan_tri_t *sctri)
 
 }
 
-bool check_clip(vector_t* p, float width, float height)
+bool check_clip(vector_t* p, int width, int height)
 {
 	if (p->x < 0 || p->x >= height) return false;
 	if (p->y < 0 || p->y >= height) return false;
@@ -702,6 +710,19 @@ void main_loop()
 		}
 		else
 		{
+			int64_t tick_now = 0;
+			::QueryPerformanceCounter((LARGE_INTEGER*)&tick_now);
+			float dt_ms = (tick_now - tick_start)* reci_freq;
+			++frame_count;
+			if (dt_ms >= 1000.0f)
+			{
+				frame_rate = (uint32_t)(frame_count * 1000.0f / dt_ms);
+				tick_start = tick_now;
+				frame_count = 0;
+				TCHAR str[64];
+				::wsprintfW(str, _T("sr3d %d fps"), frame_rate);
+				::SetWindowText(hwnd, str);
+			}
 			update();
 		}
 	}
@@ -779,40 +800,63 @@ HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
 
 }
 
+
+void load_tex(const char* tex_path, uint32_t*& src_tex, int& tex_w, int& tex_h)
+{
+	int components = 0;
+	stbi_uc* st_img = stbi_load(tex_path, &tex_w, &tex_h, &components, STBI_rgb_alpha);
+	if (st_img == nullptr)
+	{
+		// if we haven't returned, it's because we failed to load the file.
+		printf("Failed to load image %s\nReason: %s\n", tex_path, stbi_failure_reason());
+		return;
+	}
+
+	src_tex = new uint32_t[tex_w * tex_h];
+
+	for (int i = 0; i < tex_h; ++i) {
+		for (int j = 0; j < tex_w; ++j) {
+			int pidx = (tex_h - 1 - i) * tex_w + j;
+			vector_t c;
+			c.b = st_img[pidx * 4 + 0] / 255.0f;
+			c.g = st_img[pidx * 4 + 1] / 255.0f;
+			c.r = st_img[pidx * 4 + 2] / 255.0f;
+			c.a = st_img[pidx * 4 + 3] / 255.0f;
+			src_tex[pidx] = makefour(c);
+		}
+	}
+
+	stbi_image_free(st_img);
+}
+
 int main(void)
 {
 	width = 800;
 	height = 600;
 	hwnd = init_window(GetModuleHandle(NULL), _T("sr3d"), width, height);
 
-	zbuffer = new float[width * height];
-	memset(zbuffer, 0, width * height * sizeof(float));
-
-	tex_width = 512;
-	tex_height = 512;
-	texture = new uint32_t[tex_width * tex_height];
-	for (int i = 0; i < tex_height; ++i)
-	{
-		for (int j = 0; j < tex_width; ++j)
-		{
-			int x = i / 32, y = j / 32;
-			texture[i * tex_width + j] = ((x + y) & 1) ? 0xffffff : 0x5aafc3;
-		}
-	}
-
 	screenDC = CreateCompatibleDC(GetDC(hwnd));
 
 	BITMAPINFO bi = {
-		{ sizeof(BITMAPINFOHEADER), width, height, 1, 32, BI_RGB, width * height * 4, 0, 0, 0, 0 }
+		{ sizeof(BITMAPINFOHEADER), width, height, 1u, 32u, BI_RGB, width * height * 4u, 0, 0, 0, 0 }
 	};
 
 	HBITMAP screenBMP = CreateDIBSection(screenDC, &bi, DIB_RGB_COLORS, (void**)&framebuffer, 0, 0);
-	if (screenBMP == NULL)
-	{
+	if (screenBMP == NULL) {
 		return -1;
 	}
 
 	SelectObject(screenDC, screenBMP);
+
+	LARGE_INTEGER temp;
+	::QueryPerformanceFrequency(&temp);
+	reci_freq = 1000.0f / temp.QuadPart;
+	::QueryPerformanceCounter((LARGE_INTEGER*)&tick_start);
+
+	zbuffer = new float[width * height];
+	memset(zbuffer, 0, width * height * sizeof(float));
+
+	load_tex("./blooming.png", texture, tex_width, tex_height);
 
 	float aspect = 1.0f * width / height;
 	matrix_set_perspective(&proj, cPI * 0.5f, aspect, 1.0f, 500.0f);
