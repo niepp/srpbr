@@ -1,47 +1,13 @@
 ﻿#include <windows.h>
 #include <tchar.h>
+#include <vector>
 #include <iostream>
 #include <cassert>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-const float cEpslion = 1e-6f;
-const float cPI = 3.1415926f;
-const float cRevt255 = 1.0f / 255.0f;
-
-struct matrix_t
-{
-	float m[4][4];
-};
-
-struct vector_t
-{
-	union
-	{
-		float vec[4];
-		struct
-		{
-			float x, y, z, w;
-		};
-		struct
-		{
-			float r, g, b, a;
-		};
-	};
-};
-
-struct texcoord_t
-{
-	float u, v;
-};
-
-struct vertex_t
-{
-	vector_t pos;
-	texcoord_t uv;
-	vector_t color;
-};
+#include "math3d.h"
 
 /*
  有一边是水平的三角形
@@ -72,11 +38,14 @@ HDC screenDC;
 
 int width = 0, height = 0;
 float angle_speed = 1.0f;
+float light_angle = 0;
 float eyedist = 3.5f;
-matrix_t model;
+matrix_t world;
 matrix_t view;
 matrix_t proj;
 matrix_t mvp;
+
+vector_t light_dir(1.0f, 0.0f, 0.0f);
 
 uint32_t *framebuffer = nullptr;
 float *zbuffer = nullptr;
@@ -84,37 +53,8 @@ uint32_t *texture;
 int tex_width, tex_height;
 shading_model_t shading_model = shading_model_t::cSM_Texture;
 
-vertex_t box_vb[12] = {
-	{ { -1, -1, -1, 1 }, { 0, 0 }, { 1, 0, 0 } },
-	{ { -1,  1, -1, 1 }, { 0, 1 }, { 0, 1, 0 } },
-
-	{ { -1, -1,  1, 1 }, { 1, 0 }, { 0, 0, 1 } },
-	{ { -1,  1,  1, 1 }, { 1, 1 }, { 1, 0, 0 } },
-
-	{ { 1, -1,  1, 1 }, { 0, 0 }, { 1, 0, 0 } },
-	{ { 1,  1,  1, 1 }, { 0, 1 }, { 0, 1, 0 } },
-
-	{ { 1, -1, -1, 1 }, { 1, 0 }, { 0, 0, 1 } },
-	{ { 1,  1, -1, 1 }, { 1, 1 }, { 1, 0, 0 } },
-
-	{ { -1,  1, -1, 1 }, { 1, 0 }, { 0, 1, 0 } },
-	{ { 1,  1, -1, 1 }, { 0, 0 }, { 1, 0, 0 } },
-
-	{ { -1, -1, -1, 1 }, { 1, 1 }, { 1, 0, 0 } },
-	{ { 1, -1, -1, 1 }, { 0, 1 }, { 0, 0, 1 } },
-
-};
-
-int box_ib[] = {
-	0, 1, 3,  3, 2, 0,
-	2, 3, 5,  5, 4, 2,
-	4, 5, 7,  7, 6, 4,
-	6, 7, 1,  1, 0, 6,
-	3, 8, 9,  9, 5, 3,
-	2, 4, 11, 11, 10, 2,
-};
-
-vertex_t vb_post[12]; // vertex buffer post transform
+sphere_t sphere_model(12);
+cube_t cube_model;
 
 template <typename T, int n>
 int array_size(T(&)[n])
@@ -122,301 +62,8 @@ int array_size(T(&)[n])
 	return n;
 }
 
-template <typename T>
-T clamp(T x, T min, T max)
-{
-	return (x < min) ? min : ((x > max) ? max : x);
-}
 
-uint8_t to_color_int(float c)
-{
-	int cint = (int)(c * 255.0f + 0.5);
-	cint = clamp(cint, 0, 255);
-	return (uint8_t)cint;
-}
-
-uint32_t makefour(const vector_t& color)
-{
-	return to_color_int(color.r)
-		| to_color_int(color.g) << 8
-		| to_color_int(color.b) << 16
-		| to_color_int(color.a) << 24;
-}
-
-void to_color(uint32_t cint, vector_t& color)
-{
-	color.r = cRevt255 * (cint & 0xff);
-	color.g = cRevt255 * ((cint >> 8) & 0xff);
-	color.b = cRevt255 * ((cint >> 16) & 0xff);
-	color.a = cRevt255 * ((cint >> 24) & 0xff);
-}
-
-uint32_t lerp(uint32_t x1, uint32_t x2, float t)
-{
-	return (uint32_t)(x1 * (1.0f - t) + x2 * t);
-}
-
-float lerp(float x1, float x2, float t)
-{ 
-	return x1 + (x2 - x1) * t;
-}
-
-void lerp(texcoord_t* p, const texcoord_t* a, const texcoord_t* b, float w)
-{
-	p->u = lerp(a->u, b->u, w);
-	p->v = lerp(a->v, b->v, w);
-}
-
-void lerp(vector_t* p, const vector_t* a, const vector_t* b, float w)
-{
-	p->x = lerp(a->x, b->x, w);
-	p->y = lerp(a->y, b->y, w);
-	p->z = lerp(a->z, b->z, w);
-	p->w = lerp(a->w, b->w, w);
-}
-
-void lerp(vertex_t* p, const vertex_t* a, const vertex_t* b, float w)
-{
-	lerp(&p->pos, &a->pos, &b->pos, w);
-	lerp(&p->uv, &a->uv, &b->uv, w);
-	lerp(&p->color, &a->color, &b->color, w);
-}
-
-// | v |
-float vector_length(const vector_t* v)
-{
-	float sq = v->x * v->x + v->y * v->y + v->z * v->z;
-	return (float)sqrt(sq);
-}
-
-// c = a + b
-void vector_add(vector_t* c, const vector_t* a, const vector_t* b)
-{
-	c->x = a->x + b->x;
-	c->y = a->y + b->y;
-	c->z = a->z + b->z;
-	c->w = 1.0;
-}
-
-// c = a - b
-void vector_sub(vector_t* c, const vector_t* a, const vector_t* b)
-{
-	c->x = a->x - b->x;
-	c->y = a->y - b->y;
-	c->z = a->z - b->z;
-	c->w = 1.0;
-}
-
-// c = a * f
-void vector_scale(vector_t* c, const vector_t* a, float f)
-{
-	c->x = a->x * f;
-	c->y = a->y * f;
-	c->z = a->z * f;
-	c->w = 1.0;
-}
-
-// 矢量点乘
-float vector_dot(const vector_t* a, const vector_t* b)
-{
-	return a->x * b->x + a->y * b->y + a->z * b->z;
-}
-
-// 矢量叉乘
-void vector_cross(vector_t* c, const vector_t* a, const vector_t* b)
-{
-	c->x = a->y * b->z - a->z * b->y;
-	c->y = a->z * b->x - a->x * b->z;
-	c->z = a->x * b->y - a->y * b->x;
-	c->w = 1.0f;
-}
-
-// 矢量插值，t取值 [0, 1]
-void vector_lerp(vector_t* c, const vector_t* a, const vector_t* b, float t)
-{
-	c->x = lerp(a->x, b->x, t);
-	c->y = lerp(a->y, b->y, t);
-	c->z = lerp(a->z, b->z, t);
-	c->w = 1.0f;
-}
-
-// 矢量归一化
-void vector_normalize(vector_t* v)
-{
-	float length = vector_length(v);
-	float inv = cEpslion;
-	if (abs(length) > cEpslion)
-	{
-		inv = 1.0f / length;
-	}
-
-	v->x *= inv;
-	v->y *= inv;
-	v->z *= inv;
-
-}
-
-// c = a + b
-void matrix_add(matrix_t* c, const matrix_t* a, const matrix_t* b)
-{
-	for (int i = 0; i < 4; ++i)
-	{
-		for (int j = 0; j < 4; ++j)
-			c->m[i][j] = a->m[i][j] + b->m[i][j];
-	}
-}
-
-// c = a - b
-void matrix_sub(matrix_t* c, const matrix_t* a, const matrix_t* b)
-{
-	for (int i = 0; i < 4; ++i)
-	{
-		for (int j = 0; j < 4; ++j)
-			c->m[i][j] = a->m[i][j] + b->m[i][j];
-	}
-}
-
-// c = a * b
-void matrix_mul(matrix_t* c, const matrix_t* a, const matrix_t* b)
-{
-	for (int i = 0; i < 4; ++i)
-	{
-		for (int j = 0; j < 4; ++j)
-		{
-			float s = 0;
-			for (int k = 0; k < 4; ++k)
-			{
-				s += (a->m[i][k] * b->m[k][j]);
-			}
-			c->m[i][j] = s;
-		}
-	}
-}
-
-// c = a * f
-void matrix_scale(matrix_t* c, const matrix_t* a, float f)
-{
-	for (int i = 0; i < 4; ++i)
-	{
-		for (int j = 0; j < 4; ++j)
-		{
-			c->m[i][j] = a->m[i][j] * f;
-		}
-	}
-}
-
-// y = x * m
-void matrix_apply(vector_t* y, const vector_t* x, const matrix_t* m)
-{
-	float X = x->x, Y = x->y, Z = x->z, W = x->w;
-	y->x = X * m->m[0][0] + Y * m->m[1][0] + Z * m->m[2][0] + W * m->m[3][0];
-	y->y = X * m->m[0][1] + Y * m->m[1][1] + Z * m->m[2][1] + W * m->m[3][1];
-	y->z = X * m->m[0][2] + Y * m->m[1][2] + Z * m->m[2][2] + W * m->m[3][2];
-	y->w = X * m->m[0][3] + Y * m->m[1][3] + Z * m->m[2][3] + W * m->m[3][3];
-}
-
-void matrix_set_identity(matrix_t* m)
-{
-	m->m[0][0] = m->m[1][1] = m->m[2][2] = m->m[3][3] = 1.0f;
-	m->m[0][1] = m->m[0][2] = m->m[0][3] = 0.0f;
-	m->m[1][0] = m->m[1][2] = m->m[1][3] = 0.0f;
-	m->m[2][0] = m->m[2][1] = m->m[2][3] = 0.0f;
-	m->m[3][0] = m->m[3][1] = m->m[3][2] = 0.0f;
-}
-
-void matrix_set_zero(matrix_t* m) {
-	m->m[0][0] = m->m[0][1] = m->m[0][2] = m->m[0][3] = 0.0f;
-	m->m[1][0] = m->m[1][1] = m->m[1][2] = m->m[1][3] = 0.0f;
-	m->m[2][0] = m->m[2][1] = m->m[2][2] = m->m[2][3] = 0.0f;
-	m->m[3][0] = m->m[3][1] = m->m[3][2] = m->m[3][3] = 0.0f;
-}
-
-// 平移变换
-void matrix_set_translate(matrix_t* m, float x, float y, float z)
-{
-	matrix_set_identity(m);
-	m->m[3][0] = x;
-	m->m[3][1] = y;
-	m->m[3][2] = z;
-}
-
-// 缩放变换
-void matrix_set_scale(matrix_t* m, float x, float y, float z)
-{
-	matrix_set_identity(m);
-	m->m[0][0] = x;
-	m->m[1][1] = y;
-	m->m[2][2] = z;
-}
-
-// 旋转矩阵
-void matrix_set_rotate(matrix_t* m, float x, float y, float z, float theta)
-{
-	float qsin = (float)sin(theta * 0.5f);
-	float qcos = (float)cos(theta * 0.5f);
-	vector_t vec = { x, y, z, 1.0f };
-	float w = qcos;
-	vector_normalize(&vec);
-	x = vec.x * qsin;
-	y = vec.y * qsin;
-	z = vec.z * qsin;
-	m->m[0][0] = 1 - 2 * y * y - 2 * z * z;
-	m->m[1][0] = 2 * x * y - 2 * w * z;
-	m->m[2][0] = 2 * x * z + 2 * w * y;
-	m->m[0][1] = 2 * x * y + 2 * w * z;
-	m->m[1][1] = 1 - 2 * x * x - 2 * z * z;
-	m->m[2][1] = 2 * y * z - 2 * w * x;
-	m->m[0][2] = 2 * x * z - 2 * w * y;
-	m->m[1][2] = 2 * y * z + 2 * w * x;
-	m->m[2][2] = 1 - 2 * x * x - 2 * y * y;
-	m->m[0][3] = m->m[1][3] = m->m[2][3] = 0.0f;
-	m->m[3][0] = m->m[3][1] = m->m[3][2] = 0.0f;
-	m->m[3][3] = 1.0f;
-}
-
-// view matrix
-void matrix_set_lookat(matrix_t* m, const vector_t* eye, const vector_t* at, const vector_t* up)
-{
-	vector_t xaxis, yaxis, zaxis;
-
-	vector_sub(&zaxis, at, eye);
-	vector_normalize(&zaxis);
-	vector_cross(&xaxis, up, &zaxis);
-	vector_normalize(&xaxis);
-	vector_cross(&yaxis, &zaxis, &xaxis);
-
-	m->m[0][0] = xaxis.x;
-	m->m[1][0] = xaxis.y;
-	m->m[2][0] = xaxis.z;
-	m->m[3][0] = -vector_dot(&xaxis, eye);
-
-	m->m[0][1] = yaxis.x;
-	m->m[1][1] = yaxis.y;
-	m->m[2][1] = yaxis.z;
-	m->m[3][1] = -vector_dot(&yaxis, eye);
-
-	m->m[0][2] = zaxis.x;
-	m->m[1][2] = zaxis.y;
-	m->m[2][2] = zaxis.z;
-	m->m[3][2] = -vector_dot(&zaxis, eye);
-
-	m->m[0][3] = m->m[1][3] = m->m[2][3] = 0.0f;
-	m->m[3][3] = 1.0f;
-}
-
-// projection matrix (ref to D3DXMatrixPerspectiveFovLH)
-void matrix_set_perspective(matrix_t* m, float fovy, float aspect, float zn, float zf)
-{
-	float fax = 1.0f / (float)tan(fovy * 0.5f);
-	matrix_set_zero(m);
-	m->m[0][0] = (float)(fax / aspect);
-	m->m[1][1] = (float)(fax);
-	m->m[2][2] = zf / (zf - zn);
-	m->m[3][2] = -zn * zf / (zf - zn);
-	m->m[2][3] = 1;
-}
-
-uint32_t texture_sample(const texcoord_t& texcoord)
+vector_t texture_sample(const texcoord_t& texcoord)
 {
 	float u = clamp(texcoord.u, 0.0f, 1.0f) * (tex_width - 1);
 	float v = clamp(texcoord.v, 0.0f, 1.0f) * (tex_height - 1);
@@ -444,7 +91,7 @@ uint32_t texture_sample(const texcoord_t& texcoord)
 	lerp(&tu1, &c01, &c11, u_weight);
 	lerp(&c, &tu0, &tu1, v_weight);
 
-	return makefour(c);
+	return c;
 
 }
 
@@ -473,22 +120,27 @@ bool depth_test(int x, int y, float z)
 
 void pixel_process(int x, int y, const vertex_t& p)
 {
-	uint32_t c = 0;
+	vector_t color;
 	if (shading_model == shading_model_t::cSM_Color)
-	{
-		vector_t color;
+	{		
 		vector_scale(&color, &p.color, 1 / p.pos.w);
-		c = makefour(color);
 	}
 	else if (shading_model == shading_model_t::cSM_Texture)
 	{
 		texcoord_t uv = p.uv;
 		uv.u /= p.pos.w;
 		uv.v /= p.pos.w;
-		c = texture_sample(uv);
+		color = texture_sample(uv);
+
+		vector_t nor;
+		vector_scale(&nor, &p.nor, 1 / p.pos.w);
+		vector_normalize(&nor);
+		float NdotL = vector_dot(&nor, &light_dir);
+		NdotL = max(NdotL, 0.15f);
+		vector_scale(&color, &color, NdotL);
 	}
 
-	write_pixel(x, y, c);
+	write_pixel(x, y, makefour(color));
 	write_depth(x, y, p.pos.z);
 }
 
@@ -560,6 +212,10 @@ void perspective_divide(vertex_t* p)
 	p->pos.z *= revw;
 	p->pos.w = revw; // 这里存1/w，因为透视校正原因，1/w才有线性关系： 1/p.w = lerp(1/p0.w, 1/p1.w, weight)
 
+	p->nor.x *= revw;
+	p->nor.y *= revw;
+	p->nor.z *= revw;
+
 	p->uv.u *= revw;
 	p->uv.v *= revw;
 
@@ -628,13 +284,13 @@ void draw_triangle(const matrix_t* mvp, const vertex_t& p0, const vertex_t& p1, 
 
 }
 
-void update()
+void update(model_base_t *model)
 {
 	memset(framebuffer, 0, width * height * sizeof(uint32_t));
 	memset(zbuffer, 0, width * height * sizeof(float));
 
-	angle_speed += 0.008f;
-	matrix_set_rotate(&model, -1, -0.5, 1, angle_speed);
+	//angle_speed += 0.008f;
+	matrix_set_rotate(&world, 0, 0, 1, angle_speed);
 
 	vector_t eye = { eyedist, 0.0f, 0.0f, 1.0f };
 	vector_t at = { 0.0f, 0.0f, 0.0f, 1.0f };
@@ -642,20 +298,24 @@ void update()
 	matrix_set_lookat(&view, &eye, &at, &up);
 
 	matrix_t mv;
-	matrix_mul(&mv, &model, &view);
+	matrix_mul(&mv, &world, &view);
 	matrix_mul(&mvp, &mv, &proj);
 
-	for (int i = 0; i < array_size(box_vb); ++i)
+	vertex_vec_t& vb = model->m_model_vertex;
+	vertex_vec_t& vb_post = model->m_vertex_post;
+	index_vec_t& ib = model->m_model_indices;
+
+	for (int i = 0; i < vb.size(); ++i)
 	{
-		vertex_process(&mvp, box_vb[i], vb_post[i]);
+		vertex_process(&mvp, vb[i], vb_post[i]);
 	}
 
-	int tri_num = array_size(box_ib) / 3;
+	int tri_num = (int)ib.size() / 3;
 	for (int i = 0; i < tri_num; ++i)
 	{
-		int i0 = box_ib[i * 3 + 0];
-		int i1 = box_ib[i * 3 + 1];
-		int i2 = box_ib[i * 3 + 2];
+		int i0 = ib[i * 3 + 0];
+		int i1 = ib[i * 3 + 1];
+		int i2 = ib[i * 3 + 2];
 
 		vector_t v01, v02;
 		vector_sub(&v01, &vb_post[i1].pos, &vb_post[i0].pos);
@@ -723,9 +383,18 @@ void main_loop()
 				::wsprintfW(str, _T("sr3d %d fps"), frame_rate);
 				::SetWindowText(hwnd, str);
 			}
-			update();
+			//update(&cube_model);
+			update(&sphere_model);
 		}
 	}
+}
+
+void update_light(float new_angle)
+{
+	light_angle = new_angle;
+	light_dir.x = 0.96f * sin(light_angle);
+	light_dir.y = 0.96f * cos(light_angle);
+	light_dir.z = -0.2f;
 }
 
 LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -748,6 +417,12 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			break;
 		case VK_DOWN:
 			eyedist -= 0.1f;
+			break;
+		case VK_LEFT:
+			update_light(light_angle + 0.1f);
+			break;
+		case VK_RIGHT:
+			update_light(light_angle - 0.1f);
 			break;
 		default:
 			break;
@@ -856,11 +531,12 @@ int main(void)
 	zbuffer = new float[width * height];
 	memset(zbuffer, 0, width * height * sizeof(float));
 
-	load_tex("./blooming.png", texture, tex_width, tex_height);
+	load_tex("./albedo.png", texture, tex_width, tex_height);
 
 	float aspect = 1.0f * width / height;
 	matrix_set_perspective(&proj, cPI * 0.5f, aspect, 1.0f, 500.0f);
 
+	update_light(light_angle);
 	main_loop();
 
 	return 0;
