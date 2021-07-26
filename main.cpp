@@ -233,15 +233,16 @@ void to_screen_coord(vector_t* p)
 	p->y = height - 1 - (p->y + 1.0f) * 0.5f * height;
 }
 
-void vertex_process(const matrix_t* mvp, const vertex_t& v, vertex_t& p)
+void vertex_process(const matrix_t* world, const matrix_t* mvp, const vertex_t& v, vertex_t& p)
 {
 	p = v;
 	matrix_apply(&p.pos, &v.pos, mvp);
+	matrix_apply(&p.nor, &v.nor, world); // suppose world contain NO no-uniform scale!
 	perspective_divide(&p);
 	to_screen_coord(&p.pos);
 }
 
-void draw_triangle(const matrix_t* mvp, const vertex_t& p0, const vertex_t& p1, const vertex_t& p2)
+void draw_triangle(const vertex_t& p0, const vertex_t& p1, const vertex_t& p2)
 {
 	// degenerate triangle
 	if (p0.pos.y == p1.pos.y && p1.pos.y == p2.pos.y) return;
@@ -307,7 +308,7 @@ void update(model_base_t *model)
 
 	for (int i = 0; i < vb.size(); ++i)
 	{
-		vertex_process(&mvp, vb[i], vb_post[i]);
+		vertex_process(&world, &mvp, vb[i], vb_post[i]);
 	}
 
 	int tri_num = (int)ib.size() / 3;
@@ -341,13 +342,9 @@ void update(model_base_t *model)
 		if (p0->pos.y > p2->pos.y) std::swap(p0, p2);
 		if (p1->pos.y > p2->pos.y) std::swap(p1, p2);
 
-		draw_triangle(&mvp, *p0, *p1, *p2);
+		draw_triangle(*p0, *p1, *p2);
 
 	}
-
-	HDC hDC = GetDC(hwnd);
-	BitBlt(hDC, 0, 0, width, height, screenDC, 0, 0, SRCCOPY);
-	ReleaseDC(hwnd, hDC);
 
 }
 
@@ -385,6 +382,11 @@ void main_loop()
 			}
 			//update(&cube_model);
 			update(&sphere_model);
+
+			HDC hDC = GetDC(hwnd);
+			BitBlt(hDC, 0, 0, width, height, screenDC, 0, 0, SRCCOPY);
+			ReleaseDC(hwnd, hDC);
+
 		}
 	}
 }
