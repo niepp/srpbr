@@ -19,12 +19,14 @@
 	  \/
 	   p
 */
-typedef struct {
+struct scan_tri_t
+{
 	vertex_t p;
 	vertex_t l, r;
-} scan_tri_t;
+};
 
-enum class shading_model_t {
+enum class shading_model_t
+{
 	cSM_Color = 0,
 	cSM_Texture = 1,
 };
@@ -40,13 +42,18 @@ int width = 0, height = 0;
 float angle_speed = 1.0f;
 float light_angle = 0;
 float eyedist = 3.5f;
-matrix_t world;
-matrix_t view;
-matrix_t proj;
-matrix_t mvp;
 
-vector_t light_dir(1.0f, 0.0f, 0.0f);
+struct uniformbuffer_t
+{
+	vector_t eye;
+	matrix_t world;
+	matrix_t view;
+	matrix_t proj;
+	matrix_t mvp;
+	vector_t light_dir;
+};
 
+uniformbuffer_t uniformbuffer;
 uint32_t *framebuffer = nullptr;
 float *zbuffer = nullptr;
 uint32_t *texture;
@@ -61,7 +68,6 @@ int array_size(T(&)[n])
 {
 	return n;
 }
-
 
 vector_t texture_sample(const texcoord_t& texcoord)
 {
@@ -94,7 +100,6 @@ vector_t texture_sample(const texcoord_t& texcoord)
 	return c;
 
 }
-
 
 void write_pixel(int x, int y, uint32_t color)
 {
@@ -135,7 +140,7 @@ void pixel_process(int x, int y, const vertex_t& p)
 		vector_t nor;
 		vector_scale(&nor, &p.nor, 1 / p.pos.w);
 		vector_normalize(&nor);
-		float NdotL = vector_dot(&nor, &light_dir);
+		float NdotL = vector_dot(&nor, &uniformbuffer.light_dir);
 		NdotL = max(NdotL, 0.15f);
 		vector_scale(&color, &color, NdotL);
 	}
@@ -291,16 +296,15 @@ void update(model_base_t *model)
 	memset(zbuffer, 0, width * height * sizeof(float));
 
 	//angle_speed += 0.008f;
-	matrix_set_rotate(&world, 0, 0, 1, angle_speed);
+	matrix_set_rotate(&uniformbuffer.world, 0, 0, 1, angle_speed);
 
-	vector_t eye = { eyedist, 0.0f, 0.0f, 1.0f };
 	vector_t at = { 0.0f, 0.0f, 0.0f, 1.0f };
 	vector_t up = { 0.0f, 0.0f, 1.0f, 1.0f };
-	matrix_set_lookat(&view, &eye, &at, &up);
+	matrix_set_lookat(&uniformbuffer.view, &uniformbuffer.eye, &at, &up);
 
 	matrix_t mv;
-	matrix_mul(&mv, &world, &view);
-	matrix_mul(&mvp, &mv, &proj);
+	matrix_mul(&mv, &uniformbuffer.world, &uniformbuffer.view);
+	matrix_mul(&uniformbuffer.mvp, &mv, &uniformbuffer.proj);
 
 	vertex_vec_t& vb = model->m_model_vertex;
 	vertex_vec_t& vb_post = model->m_vertex_post;
@@ -308,7 +312,7 @@ void update(model_base_t *model)
 
 	for (int i = 0; i < vb.size(); ++i)
 	{
-		vertex_process(&world, &mvp, vb[i], vb_post[i]);
+		vertex_process(&uniformbuffer.world, &uniformbuffer.mvp, vb[i], vb_post[i]);
 	}
 
 	int tri_num = (int)ib.size() / 3;
@@ -394,9 +398,9 @@ void main_loop()
 void update_light(float new_angle)
 {
 	light_angle = new_angle;
-	light_dir.x = 0.96f * sin(light_angle);
-	light_dir.y = 0.96f * cos(light_angle);
-	light_dir.z = -0.2f;
+	uniformbuffer.light_dir.x = 0.96f * sin(light_angle);
+	uniformbuffer.light_dir.y = 0.96f * cos(light_angle);
+	uniformbuffer.light_dir.z = -0.2f;
 }
 
 LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -535,8 +539,11 @@ int main(void)
 
 	load_tex("./albedo.png", texture, tex_width, tex_height);
 
+	uniformbuffer.eye = { eyedist, 0.0f, 0.0f, 1.0f };
+	uniformbuffer.light_dir = (1.0f, 0.0f, 0.0f);
+
 	float aspect = 1.0f * width / height;
-	matrix_set_perspective(&proj, cPI * 0.5f, aspect, 1.0f, 500.0f);
+	matrix_set_perspective(&uniformbuffer.proj, cPI * 0.5f, aspect, 1.0f, 500.0f);
 
 	update_light(light_angle);
 	main_loop();

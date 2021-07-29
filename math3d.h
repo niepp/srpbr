@@ -183,26 +183,6 @@ void vector_normalize(vector_t* v)
 
 }
 
-// c = a + b
-void matrix_add(matrix_t* c, const matrix_t* a, const matrix_t* b)
-{
-	for (int i = 0; i < 4; ++i)
-	{
-		for (int j = 0; j < 4; ++j)
-			c->m[i][j] = a->m[i][j] + b->m[i][j];
-	}
-}
-
-// c = a - b
-void matrix_sub(matrix_t* c, const matrix_t* a, const matrix_t* b)
-{
-	for (int i = 0; i < 4; ++i)
-	{
-		for (int j = 0; j < 4; ++j)
-			c->m[i][j] = a->m[i][j] + b->m[i][j];
-	}
-}
-
 // c = a * b
 void matrix_mul(matrix_t* c, const matrix_t* a, const matrix_t* b)
 {
