@@ -151,6 +151,7 @@ void phong_shading(const interp_vertex_t& p, vector_t& out_color)
 	vector_t specular;
 	vector_t v;
 	vector_sub(&v, &uniformbuffer.eye, &p.wpos);
+	vector_normalize(&v);
 
 	vector_t h; // (v + l) / 2
 	vector_add(&h, &v, &uniformbuffer.light_dir);
@@ -287,9 +288,13 @@ void vertex_process(const matrix_t* world, const matrix_t* mvp, const model_vert
 {
 	matrix_apply(&p.pos, &v.pos, mvp);
 	matrix_apply(&p.wpos, &v.pos, world);
-	matrix_apply(&p.nor, &v.nor, world); // suppose world contain NO no-uniform scale!
+
+	p.nor = v.nor;
+	p.nor.w = 0;
 	p.color = v.color;
 	p.uv = v.uv;
+	matrix_apply(&p.nor, &v.nor, world); // suppose world contain NO no-uniform scale!
+
 	perspective_divide(&p);
 	to_screen_coord(&p.pos);
 }
