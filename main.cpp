@@ -47,12 +47,12 @@ float eyedist = 3.5f;
 
 struct uniformbuffer_t
 {
-	vector_t eye;
+	vector3_t eye;
 	matrix_t world;
 	matrix_t view;
 	matrix_t proj;
 	matrix_t mvp;
-	vector_t light_dir;
+	vector3_t light_dir;
 	float light_intensity;
 	float specular_power;
 };
@@ -73,7 +73,7 @@ int array_size(T(&)[n])
 	return n;
 }
 
-vector_t texture_sample(const texcoord_t& texcoord)
+vector4_t texture_sample(const texcoord_t& texcoord)
 {
 	float u = clamp(texcoord.u, 0.0f, 1.0f) * (tex_width - 1);
 	float v = clamp(texcoord.v, 0.0f, 1.0f) * (tex_height - 1);
@@ -89,17 +89,17 @@ vector_t texture_sample(const texcoord_t& texcoord)
 	float u_weight = u - x0;
 	float v_weight = v - y0;
 
-	vector_t c00, c10, c01, c11;
+	vector4_t c00, c10, c01, c11;
 	to_color(t00, c00);	
 	to_color(t10, c10);
 	to_color(t01, c01);
 	to_color(t11, c11);
 
 	// bilinear interpolation
-	vector_t tu0, tu1, c;
-	lerp(&tu0, &c00, &c10, u_weight);
-	lerp(&tu1, &c01, &c11, u_weight);
-	lerp(&c, &tu0, &tu1, v_weight);
+	vector4_t tu0, tu1, c;
+	lerp(tu0, c00, c10, u_weight);
+	lerp(tu1, c01, c11, u_weight);
+	lerp(c, tu0, tu1, v_weight);
 
 	return c;
 
@@ -127,55 +127,79 @@ bool depth_test(int x, int y, float z)
 	return z >= nowz;
 }
 
-void phong_shading(const interp_vertex_t& p, vector_t& out_color)
+void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 {
 	texcoord_t uv = p.uv;
 	uv.u /= p.pos.w;
 	uv.v /= p.pos.w;
 
-	vector_t wnor;
-	vector_scale(&wnor, &p.nor, 1 / p.pos.w);
-	vector_normalize(&wnor);
+	vector3_t wnor = p.nor / p.pos.w;
+	wnor.normalize();
 
-	vector_t wpos;
-	vector_scale(&wpos, &p.wpos, 1 / p.pos.w);
+	vector3_t wpos = p.wpos / p.pos.w;
 
-	vector_t albedo = texture_sample(uv);
+	vector4_t albedo = texture_sample(uv);
 
-	float NoL = vector_dot(&wnor, &uniformbuffer.light_dir);
+	float NoL = dot(wnor, uniformbuffer.light_dir);
 	NoL = max(NoL, 0.15f);
 
-	vector_t diffuse;
-	vector_scale(&diffuse, &albedo, uniformbuffer.light_intensity * NoL);
+	vector4_t diffuse;
+	diffuse = albedo * uniformbuffer.light_intensity * NoL;
 
-	vector_t specular;
-	vector_t v;
-	vector_sub(&v, &uniformbuffer.eye, &p.wpos);
-	vector_normalize(&v);
+	vector3_t v = uniformbuffer.eye - p.wpos;
+	v.normalize();
 
-	vector_t h; // (v + l) / 2
-	vector_add(&h, &v, &uniformbuffer.light_dir);
-	vector_normalize(&h);
+	// (v + l) / 2
+	vector3_t h = v + uniformbuffer.light_dir;
+	h.normalize();
 
-	float NoH = vector_dot(&wnor, &h);
-	vector_t ks(0.5f, 0.5f, 0.5f);
-	vector_scale(&specular, &ks, uniformbuffer.light_intensity * max(0.0f, pow(NoH, uniformbuffer.specular_power)));
+	float NoH = dot(wnor, h);
+	vector4_t ks(0.5f, 0.5f, 0.5f);
+	vector4_t specular = ks * uniformbuffer.light_intensity * max(0.0f, pow(NoH, uniformbuffer.specular_power));
 
-	vector_add(&out_color, &diffuse, &specular);
+	out_color = diffuse + specular;
 
 }
 
-void pbr_shading(const interp_vertex_t& p, vector_t& out_color)
+vector4_t fresenl_schlick(float HoV, vector4_t& f0)
 {
+	return f0 + (vector4_t(1.0f, 1.0f, 1.0f) - f0) * pow(1 - HoV, 5.0f);
+}
+
+void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
+{
+	texcoord_t uv = p.uv;
+	uv.u /= p.pos.w;
+	uv.v /= p.pos.w;
+
+	vector3_t wnor = p.nor / p.pos.w;
+	wnor.normalize();
+
+	vector3_t wpos = p.wpos / p.pos.w;
+
+	vector4_t albedo = texture_sample(uv);
+
+	float NoL = dot(wnor, uniformbuffer.light_dir);
+	NoL = max(NoL, 0.15f);
+
+	vector4_t diffuse;
+	diffuse = albedo * uniformbuffer.light_intensity * NoL;
+
+	vector3_t v = uniformbuffer.eye - p.wpos;
+	v.normalize();
+
+	// (v + l) / 2
+	vector3_t h = v + uniformbuffer.light_dir;
+	h.normalize();
 
 }
 
 void pixel_process(int x, int y, const interp_vertex_t& p)
 {
-	vector_t color;
+	vector4_t color;
 	if (shading_model == shading_model_t::cSM_Color)
-	{		
-		vector_scale(&color, &p.color, 1 / p.pos.w);
+	{
+		color = p.color / p.pos.w;
 	}
 	else if (shading_model == shading_model_t::cSM_Phong)
 	{
@@ -190,18 +214,18 @@ void pixel_process(int x, int y, const interp_vertex_t& p)
 	write_depth(x, y, p.pos.z);
 }
 
-void scan_horizontal(interp_vertex_t* vl, interp_vertex_t* vr, int y)
+void scan_horizontal(const interp_vertex_t& vl, const interp_vertex_t& vr, int y)
 {
-	float dist = vr->pos.x - vl->pos.x;
+	float dist = vr.pos.x - vl.pos.x;
 	// left要往小取整，right要往大取整，避免三角形之间的接缝空隙！
-	int left = (int)(vl->pos.x);
-	int right = (int)(vr->pos.x + 0.5f);
+	int left = (int)(vl.pos.x);
+	int right = (int)(vr.pos.x + 0.5f);
 	for (int i = left; i < right; ++i)
 	{
 		interp_vertex_t p;
-		float w = (i - vl->pos.x) / dist;
+		float w = (i - vl.pos.x) / dist;
 		w = clamp(w, 0.0f, 1.0f);
-		lerp(&p, vl, vr, w);
+		lerp(p, vl, vr, w);
 		if (depth_test(i, y, p.pos.z))
 		{
 			pixel_process(i, y, p);
@@ -233,14 +257,14 @@ void scan_triangle(scan_tri_t *sctri)
 		float cury = i + 0.0f;
 		float w = (ydist > 0 ? cury - ymin : cury - ymax) / ydist;
 		w = clamp(w, 0.0f, 1.0f);
-		lerp(&vl, &sctri->l, &sctri->p, w);
-		lerp(&vr, &sctri->r, &sctri->p, w);
-		scan_horizontal(&vl, &vr, i);
+		lerp(vl, sctri->l, sctri->p, w);
+		lerp(vr, sctri->r, sctri->p, w);
+		scan_horizontal(vl, vr, i);
 	}
 
 }
 
-bool check_clip(vector_t* p, int width, int height)
+bool check_clip(vector4_t* p, int width, int height)
 {
 	if (p->x < 0 || p->x >= height) return false;
 	if (p->y < 0 || p->y >= height) return false;
@@ -261,7 +285,6 @@ void perspective_divide(interp_vertex_t* p)
 	p->wpos.x *= revw;
 	p->wpos.y *= revw;
 	p->wpos.z *= revw;
-	p->wpos.w = 1.0f;
 
 	p->nor.x *= revw;
 	p->nor.y *= revw;
@@ -277,24 +300,20 @@ void perspective_divide(interp_vertex_t* p)
 
 }
 
-void to_screen_coord(vector_t* p)
+void to_screen_coord(vector4_t* p)
 {
 	// to screen coord x[0, width], y[0, height], z[0, 1] (depth)
 	p->x = (p->x + 1.0f) * 0.5f * width;
 	p->y = height - 1 - (p->y + 1.0f) * 0.5f * height;
 }
 
-void vertex_process(const matrix_t* world, const matrix_t* mvp, const model_vertex_t& v, interp_vertex_t& p)
+void vertex_process(const matrix_t& world, const matrix_t& mvp, const model_vertex_t& v, interp_vertex_t& p)
 {
-	matrix_apply(&p.pos, &v.pos, mvp);
-	matrix_apply(&p.wpos, &v.pos, world);
-
-	p.nor = v.nor;
-	p.nor.w = 0;
+	p.pos = mvp * vector4_t(v.pos, 1.0f);
+	p.wpos = world * v.pos;
+	p.nor = world * v.nor; // suppose world contain NO no-uniform scale!
 	p.color = v.color;
 	p.uv = v.uv;
-	matrix_apply(&p.nor, &v.nor, world); // suppose world contain NO no-uniform scale!
-
 	perspective_divide(&p);
 	to_screen_coord(&p.pos);
 }
@@ -324,7 +343,7 @@ void draw_triangle(const interp_vertex_t& p0, const interp_vertex_t& p1, const i
 	{
 		interp_vertex_t mid;
 		float w = (p1.pos.y - p0.pos.y) / (p2.pos.y - p0.pos.y);
-		lerp(&mid, &p0, &p2, w);
+		lerp(mid, p0, p2, w);
 		mid.pos.y = p1.pos.y;
 
 		uptri.p = p2;
@@ -348,15 +367,14 @@ void update(model_base_t *model)
 	memset(zbuffer, 0, width * height * sizeof(float));
 
 	//angle_speed += 0.008f;
-	matrix_set_rotate(&uniformbuffer.world, 0, 0, 1, angle_speed);
+	uniformbuffer.world.set_rotate(0, 0, 1, angle_speed);
 
-	vector_t at = { 0.0f, 0.0f, 0.0f, 1.0f };
-	vector_t up = { 0.0f, 0.0f, 1.0f, 1.0f };
-	matrix_set_lookat(&uniformbuffer.view, &uniformbuffer.eye, &at, &up);
+	vector3_t at(0.0f, 0.0f, 0.0f);
+	vector3_t up(0.0f, 0.0f, 1.0f);
+	uniformbuffer.view.set_lookat(uniformbuffer.eye, at, up);
 
-	matrix_t mv;
-	matrix_mul(&mv, &uniformbuffer.world, &uniformbuffer.view);
-	matrix_mul(&uniformbuffer.mvp, &mv, &uniformbuffer.proj);
+	matrix_t mv = mul(uniformbuffer.world, uniformbuffer.view);
+	uniformbuffer.mvp = mul(mv, uniformbuffer.proj);
 
 	model_vertex_vec_t& vb = model->m_model_vertex;
 	interp_vertex_vec_t& vb_post = model->m_vertex_post;
@@ -364,7 +382,7 @@ void update(model_base_t *model)
 
 	for (int i = 0; i < vb.size(); ++i)
 	{
-		vertex_process(&uniformbuffer.world, &uniformbuffer.mvp, vb[i], vb_post[i]);
+		vertex_process(uniformbuffer.world, uniformbuffer.mvp, vb[i], vb_post[i]);
 	}
 
 	int tri_num = (int)ib.size() / 3;
@@ -374,9 +392,8 @@ void update(model_base_t *model)
 		int i1 = ib[i * 3 + 1];
 		int i2 = ib[i * 3 + 2];
 
-		vector_t v01, v02;
-		vector_sub(&v01, &vb_post[i1].pos, &vb_post[i0].pos);
-		vector_sub(&v02, &vb_post[i2].pos, &vb_post[i0].pos);
+		vector4_t v01 = vb_post[i1].pos - vb_post[i0].pos;
+		vector4_t v02 = vb_post[i2].pos - vb_post[i0].pos;
 
 		float det_xy = v01.x * v02.y - v01.y * v02.x;
 		if (det_xy > 0.0f)
@@ -549,7 +566,7 @@ void load_tex(const char* tex_path, uint32_t*& src_tex, int& tex_w, int& tex_h)
 	for (int i = 0; i < tex_h; ++i) {
 		for (int j = 0; j < tex_w; ++j) {
 			int pidx = (tex_h - 1 - i) * tex_w + j;
-			vector_t c;
+			vector4_t c;
 			c.b = st_img[pidx * 4 + 0] / 255.0f;
 			c.g = st_img[pidx * 4 + 1] / 255.0f;
 			c.r = st_img[pidx * 4 + 2] / 255.0f;
@@ -590,13 +607,13 @@ int main(void)
 
 	load_tex("./albedo.png", texture, tex_width, tex_height);
 
-	uniformbuffer.eye = { eyedist, 0.0f, 0.0f, 1.0f };
+	uniformbuffer.eye.set(eyedist, 0.0f, 0.0f);
 	uniformbuffer.light_dir = (1.0f, 0.0f, 0.0f);
 	uniformbuffer.light_intensity = 2.0f;
 	uniformbuffer.specular_power = 8.0f;
 
 	float aspect = 1.0f * width / height;
-	matrix_set_perspective(&uniformbuffer.proj, cPI * 0.5f, aspect, 1.0f, 500.0f);
+	uniformbuffer.proj.set_perspective(cPI * 0.5f, aspect, 1.0f, 500.0f);
 
 	update_light(light_angle);
 	main_loop();
