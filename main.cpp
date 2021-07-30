@@ -28,7 +28,8 @@ struct scan_tri_t
 enum class shading_model_t
 {
 	cSM_Color = 0,
-	cSM_Texture = 1,
+	cSM_Phong = 1,
+	cSM_PBR = 2,
 };
 
 
@@ -52,6 +53,7 @@ struct uniformbuffer_t
 	matrix_t mvp;
 	vector_t light_dir;
 	float light_intensity;
+	float specular_power;
 };
 
 uniformbuffer_t uniformbuffer;
@@ -59,7 +61,7 @@ uint32_t *framebuffer = nullptr;
 float *zbuffer = nullptr;
 uint32_t *texture;
 int tex_width, tex_height;
-shading_model_t shading_model = shading_model_t::cSM_Texture;
+shading_model_t shading_model = shading_model_t::cSM_Phong;
 
 sphere_t sphere_model(12);
 cube_t cube_model;
@@ -154,10 +156,15 @@ void phong_shading(const interp_vertex_t& p, vector_t& out_color)
 	vector_normalize(&h);
 
 	float NoH = vector_dot(&wnor, &h);
-	vector_t ks(0.8f, 0.8f, 0.8f);
-	vector_scale(&specular, &ks, uniformbuffer.light_intensity * max(0.0f, pow(NoH, 10.0f)));
+	vector_t ks(0.5f, 0.5f, 0.5f);
+	vector_scale(&specular, &ks, uniformbuffer.light_intensity * max(0.0f, pow(NoH, uniformbuffer.specular_power)));
 
 	vector_add(&out_color, &diffuse, &specular);
+
+}
+
+void pbr_shading(const interp_vertex_t& p, vector_t& out_color)
+{
 
 }
 
@@ -168,9 +175,13 @@ void pixel_process(int x, int y, const interp_vertex_t& p)
 	{		
 		vector_scale(&color, &p.color, 1 / p.pos.w);
 	}
-	else if (shading_model == shading_model_t::cSM_Texture)
+	else if (shading_model == shading_model_t::cSM_Phong)
 	{
 		phong_shading(p, color);
+	}
+	else if (shading_model == shading_model_t::cSM_PBR)
+	{
+		pbr_shading(p, color);
 	}
 
 	write_pixel(x, y, makefour(color));
@@ -577,6 +588,7 @@ int main(void)
 	uniformbuffer.eye = { eyedist, 0.0f, 0.0f, 1.0f };
 	uniformbuffer.light_dir = (1.0f, 0.0f, 0.0f);
 	uniformbuffer.light_intensity = 2.0f;
+	uniformbuffer.specular_power = 5.0f;
 
 	float aspect = 1.0f * width / height;
 	matrix_set_perspective(&uniformbuffer.proj, cPI * 0.5f, aspect, 1.0f, 500.0f);
