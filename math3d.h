@@ -524,7 +524,8 @@ void lerp(interp_vertex_t& p, const interp_vertex_t& a, const interp_vertex_t& b
 }
 
 
-struct model_base_t {
+struct model_base_t 
+{
 	model_vertex_vec_t m_model_vertex;
 	index_vec_t m_model_indices;
 	interp_vertex_vec_t m_vertex_post;
@@ -534,9 +535,10 @@ struct model_base_t {
 /*
 	unit sphere with center at (0,0,0) and radius of 1.0
 */
-struct sphere_t : public model_base_t {
-
-	sphere_t(uint32_t seg) {
+struct sphere_t : public model_base_t
+{
+	sphere_t(uint32_t seg)
+	{
 		gen_sphere(seg, seg * 2);
 	}
 private:
