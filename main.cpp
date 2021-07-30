@@ -129,12 +129,17 @@ void phong_shading(const interp_vertex_t& p, vector_t& out_color)
 	texcoord_t uv = p.uv;
 	uv.u /= p.pos.w;
 	uv.v /= p.pos.w;
+
+	vector_t wnor;
+	vector_scale(&wnor, &p.nor, 1 / p.pos.w);
+	vector_normalize(&wnor);
+
+	vector_t wpos;
+	vector_scale(&wpos, &p.wpos, 1 / p.pos.w);
+
 	vector_t albedo = texture_sample(uv);
 
-	vector_t n;
-	vector_scale(&n, &p.nor, 1 / p.pos.w);
-	vector_normalize(&n);
-	float NoL = vector_dot(&n, &uniformbuffer.light_dir);
+	float NoL = vector_dot(&wnor, &uniformbuffer.light_dir);
 	NoL = max(NoL, 0.15f);
 
 	vector_t diffuse;
@@ -144,11 +149,11 @@ void phong_shading(const interp_vertex_t& p, vector_t& out_color)
 	vector_t v;
 	vector_sub(&v, &uniformbuffer.eye, &p.wpos);
 
-	vector_t h;
+	vector_t h; // (v + l) / 2
 	vector_add(&h, &v, &uniformbuffer.light_dir);
 	vector_normalize(&h);
 
-	float NoH = vector_dot(&n, &h);
+	float NoH = vector_dot(&wnor, &h);
 	vector_t ks(0.8f, 0.8f, 0.8f);
 	vector_scale(&specular, &ks, uniformbuffer.light_intensity * max(0.0f, pow(NoH, 10.0f)));
 
@@ -165,17 +170,7 @@ void pixel_process(int x, int y, const interp_vertex_t& p)
 	}
 	else if (shading_model == shading_model_t::cSM_Texture)
 	{
-		texcoord_t uv = p.uv;
-		uv.u /= p.pos.w;
-		uv.v /= p.pos.w;
-		color = texture_sample(uv);
-
-		vector_t nor;
-		vector_scale(&nor, &p.nor, 1 / p.pos.w);
-		vector_normalize(&nor);
-		float NdotL = vector_dot(&nor, &uniformbuffer.light_dir);
-		NdotL = max(NdotL, 0.15f);
-		vector_scale(&color, &color, NdotL);
+		phong_shading(p, color);
 	}
 
 	write_pixel(x, y, makefour(color));

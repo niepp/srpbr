@@ -47,9 +47,9 @@ struct model_vertex_t
 
 struct interp_vertex_t
 {
-	vector_t wpos;
-	vector_t pos;
-	vector_t nor;
+	vector_t wpos; // world position
+	vector_t pos;  // screen position
+	vector_t nor;  // world normal
 	texcoord_t uv;
 	vector_t color;
 };
