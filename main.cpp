@@ -21,8 +21,8 @@
 */
 struct scan_tri_t
 {
-	vertex_t p;
-	vertex_t l, r;
+	interp_vertex_t p;
+	interp_vertex_t l, r;
 };
 
 enum class shading_model_t
@@ -51,6 +51,7 @@ struct uniformbuffer_t
 	matrix_t proj;
 	matrix_t mvp;
 	vector_t light_dir;
+	float light_intensity;
 };
 
 uniformbuffer_t uniformbuffer;
@@ -123,7 +124,39 @@ bool depth_test(int x, int y, float z)
 	return z >= nowz;
 }
 
-void pixel_process(int x, int y, const vertex_t& p)
+void phong_shading(const interp_vertex_t& p, vector_t& out_color)
+{
+	texcoord_t uv = p.uv;
+	uv.u /= p.pos.w;
+	uv.v /= p.pos.w;
+	vector_t albedo = texture_sample(uv);
+
+	vector_t n;
+	vector_scale(&n, &p.nor, 1 / p.pos.w);
+	vector_normalize(&n);
+	float NoL = vector_dot(&n, &uniformbuffer.light_dir);
+	NoL = max(NoL, 0.15f);
+
+	vector_t diffuse;
+	vector_scale(&diffuse, &albedo, uniformbuffer.light_intensity * NoL);
+
+	vector_t specular;
+	vector_t v;
+	vector_sub(&v, &uniformbuffer.eye, &p.wpos);
+
+	vector_t h;
+	vector_add(&h, &v, &uniformbuffer.light_dir);
+	vector_normalize(&h);
+
+	float NoH = vector_dot(&n, &h);
+	vector_t ks(0.8f, 0.8f, 0.8f);
+	vector_scale(&specular, &ks, uniformbuffer.light_intensity * max(0.0f, pow(NoH, 10.0f)));
+
+	vector_add(&out_color, &diffuse, &specular);
+
+}
+
+void pixel_process(int x, int y, const interp_vertex_t& p)
 {
 	vector_t color;
 	if (shading_model == shading_model_t::cSM_Color)
@@ -149,7 +182,7 @@ void pixel_process(int x, int y, const vertex_t& p)
 	write_depth(x, y, p.pos.z);
 }
 
-void scan_horizontal(vertex_t* vl, vertex_t* vr, int y)
+void scan_horizontal(interp_vertex_t* vl, interp_vertex_t* vr, int y)
 {
 	float dist = vr->pos.x - vl->pos.x;
 	// left要往小取整，right要往大取整，避免三角形之间的接缝空隙！
@@ -157,7 +190,7 @@ void scan_horizontal(vertex_t* vl, vertex_t* vr, int y)
 	int right = (int)(vr->pos.x + 0.5f);
 	for (int i = left; i < right; ++i)
 	{
-		vertex_t p;
+		interp_vertex_t p;
 		float w = (i - vl->pos.x) / dist;
 		w = clamp(w, 0.0f, 1.0f);
 		lerp(&p, vl, vr, w);
@@ -183,10 +216,10 @@ void scan_triangle(scan_tri_t *sctri)
 	float ydist = sctri->p.pos.y - sctri->l.pos.y;
 
 	// bottom要往小取整，top要往大取整，避免三角形之间的接缝空隙！
-	int bottom = (int)(ymin + 0.0f);
+	int bottom = (int)(ymin);
 	int top = (int)(ymax + 0.5f);
 
-	vertex_t vl, vr;
+	interp_vertex_t vl, vr;
 	for (int i = bottom; i < top; ++i)
 	{
 		float cury = i + 0.0f;
@@ -207,7 +240,7 @@ bool check_clip(vector_t* p, int width, int height)
 	return true;
 }
 
-void perspective_divide(vertex_t* p)
+void perspective_divide(interp_vertex_t* p)
 {
 	// the point with homogeneous coordinates [x, y, z, w] corresponds to the three-dimensional Cartesian point [x/w, y/w, z/w].
 	// to cvv coord x[-1, 1], y[-1, 1], z[0, 1]
@@ -216,6 +249,11 @@ void perspective_divide(vertex_t* p)
 	p->pos.y *= revw;
 	p->pos.z *= revw;
 	p->pos.w = revw; // 这里存1/w，因为透视校正原因，1/w才有线性关系： 1/p.w = lerp(1/p0.w, 1/p1.w, weight)
+
+	p->wpos.x *= revw;
+	p->wpos.y *= revw;
+	p->wpos.z *= revw;
+	p->wpos.w = 1.0f;
 
 	p->nor.x *= revw;
 	p->nor.y *= revw;
@@ -238,16 +276,18 @@ void to_screen_coord(vector_t* p)
 	p->y = height - 1 - (p->y + 1.0f) * 0.5f * height;
 }
 
-void vertex_process(const matrix_t* world, const matrix_t* mvp, const vertex_t& v, vertex_t& p)
+void vertex_process(const matrix_t* world, const matrix_t* mvp, const model_vertex_t& v, interp_vertex_t& p)
 {
-	p = v;
 	matrix_apply(&p.pos, &v.pos, mvp);
+	matrix_apply(&p.wpos, &v.pos, world);
 	matrix_apply(&p.nor, &v.nor, world); // suppose world contain NO no-uniform scale!
+	p.color = v.color;
+	p.uv = v.uv;
 	perspective_divide(&p);
 	to_screen_coord(&p.pos);
 }
 
-void draw_triangle(const vertex_t& p0, const vertex_t& p1, const vertex_t& p2)
+void draw_triangle(const interp_vertex_t& p0, const interp_vertex_t& p1, const interp_vertex_t& p2)
 {
 	// degenerate triangle
 	if (p0.pos.y == p1.pos.y && p1.pos.y == p2.pos.y) return;
@@ -270,7 +310,7 @@ void draw_triangle(const vertex_t& p0, const vertex_t& p1, const vertex_t& p2)
 	}
 	else
 	{
-		vertex_t mid;
+		interp_vertex_t mid;
 		float w = (p1.pos.y - p0.pos.y) / (p2.pos.y - p0.pos.y);
 		lerp(&mid, &p0, &p2, w);
 		mid.pos.y = p1.pos.y;
@@ -306,8 +346,8 @@ void update(model_base_t *model)
 	matrix_mul(&mv, &uniformbuffer.world, &uniformbuffer.view);
 	matrix_mul(&uniformbuffer.mvp, &mv, &uniformbuffer.proj);
 
-	vertex_vec_t& vb = model->m_model_vertex;
-	vertex_vec_t& vb_post = model->m_vertex_post;
+	model_vertex_vec_t& vb = model->m_model_vertex;
+	interp_vertex_vec_t& vb_post = model->m_vertex_post;
 	index_vec_t& ib = model->m_model_indices;
 
 	for (int i = 0; i < vb.size(); ++i)
@@ -333,9 +373,9 @@ void update(model_base_t *model)
 			continue;
 		}
 
-		vertex_t* p0 = &vb_post[i0];
-		vertex_t* p1 = &vb_post[i1];
-		vertex_t* p2 = &vb_post[i2];
+		interp_vertex_t* p0 = &vb_post[i0];
+		interp_vertex_t* p1 = &vb_post[i1];
+		interp_vertex_t* p2 = &vb_post[i2];
 
 		if (!check_clip(&p0->pos, width, height)) return;
 		if (!check_clip(&p1->pos, width, height)) return;
@@ -541,6 +581,7 @@ int main(void)
 
 	uniformbuffer.eye = { eyedist, 0.0f, 0.0f, 1.0f };
 	uniformbuffer.light_dir = (1.0f, 0.0f, 0.0f);
+	uniformbuffer.light_intensity = 2.0f;
 
 	float aspect = 1.0f * width / height;
 	matrix_set_perspective(&uniformbuffer.proj, cPI * 0.5f, aspect, 1.0f, 500.0f);

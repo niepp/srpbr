@@ -37,7 +37,7 @@ struct texcoord_t
 	{ }
 };
 
-struct vertex_t
+struct model_vertex_t
 {
 	vector_t pos;
 	vector_t nor;
@@ -45,7 +45,17 @@ struct vertex_t
 	vector_t color;
 };
 
-typedef std::vector<vertex_t> vertex_vec_t;
+struct interp_vertex_t
+{
+	vector_t wpos;
+	vector_t pos;
+	vector_t nor;
+	texcoord_t uv;
+	vector_t color;
+};
+
+typedef std::vector<model_vertex_t> model_vertex_vec_t;
+typedef std::vector<interp_vertex_t> interp_vertex_vec_t;
 typedef std::vector<uint16_t> index_vec_t;
 
 template <typename T>
@@ -101,8 +111,9 @@ void lerp(vector_t* p, const vector_t* a, const vector_t* b, float w)
 	p->w = lerp(a->w, b->w, w);
 }
 
-void lerp(vertex_t* p, const vertex_t* a, const vertex_t* b, float w)
+void lerp(interp_vertex_t* p, const interp_vertex_t* a, const interp_vertex_t* b, float w)
 {
+	lerp(&p->wpos, &a->wpos, &b->wpos, w);
 	lerp(&p->pos, &a->pos, &b->pos, w);
 	lerp(&p->nor, &a->nor, &b->nor, w);
 	lerp(&p->uv, &a->uv, &b->uv, w);
@@ -324,9 +335,9 @@ void matrix_set_perspective(matrix_t* m, float fovy, float aspect, float zn, flo
 }
 
 struct model_base_t {
-	vertex_vec_t m_model_vertex;
+	model_vertex_vec_t m_model_vertex;
 	index_vec_t m_model_indices;
-	vertex_vec_t m_vertex_post;
+	interp_vertex_vec_t m_vertex_post;
 };
 
 
@@ -409,7 +420,6 @@ inline void sphere_t::gen_sphere(uint32_t seg1, uint32_t seg2)
 	}
 
 }
-
 
 
 struct cube_t : public model_base_t {
