@@ -28,8 +28,9 @@ struct scan_tri_t
 enum class shading_model_t
 {
 	cSM_Color = 0,
-	cSM_Phong = 1,
-	cSM_PBR = 2,
+	cSM_Phong,
+	cSM_PBR,
+	cSM_MAX,
 };
 
 
@@ -459,9 +460,8 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		switch (wParam & 511)
 		{
 		case 'C':
-			if (shading_model == shading_model_t::cSM_Color)
-				shading_model = shading_model_t::cSM_Texture;
-			else if (shading_model == shading_model_t::cSM_Texture)
+			shading_model = (shading_model_t)((int)shading_model + 1);
+			if (shading_model == shading_model_t::cSM_MAX)
 				shading_model = shading_model_t::cSM_Color;
 			break;
 		case VK_UP:
@@ -588,7 +588,7 @@ int main(void)
 	uniformbuffer.eye = { eyedist, 0.0f, 0.0f, 1.0f };
 	uniformbuffer.light_dir = (1.0f, 0.0f, 0.0f);
 	uniformbuffer.light_intensity = 2.0f;
-	uniformbuffer.specular_power = 5.0f;
+	uniformbuffer.specular_power = 8.0f;
 
 	float aspect = 1.0f * width / height;
 	matrix_set_perspective(&uniformbuffer.proj, cPI * 0.5f, aspect, 1.0f, 500.0f);
