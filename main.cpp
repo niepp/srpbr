@@ -4,10 +4,8 @@
 #include <iostream>
 #include <cassert>
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-
 #include "math3d.h"
+#include "texture.h"
 
 /*
  有一边是水平的三角形
@@ -60,8 +58,11 @@ struct uniformbuffer_t
 uniformbuffer_t uniformbuffer;
 uint32_t *framebuffer = nullptr;
 float *zbuffer = nullptr;
-uint32_t *texture;
-int tex_width, tex_height;
+
+texture2d_t albedo_tex;
+texture2d_t roughness_tex;
+texture2d_t metalness_tex;
+
 shading_model_t shading_model = shading_model_t::cSM_Phong;
 
 sphere_t sphere_model(12);
@@ -71,38 +72,6 @@ template <typename T, int n>
 int array_size(T(&)[n])
 {
 	return n;
-}
-
-vector4_t texture_sample(const texcoord_t& texcoord)
-{
-	float u = clamp(texcoord.u, 0.0f, 1.0f) * (tex_width - 1);
-	float v = clamp(texcoord.v, 0.0f, 1.0f) * (tex_height - 1);
-	int x0 = (int)(u);
-	int y0 = (int)(v);
-	int x1 = clamp(x0 + 1, 0, tex_width - 1);
-	int y1 = clamp(y0 + 1, 0, tex_height - 1);
-	uint32_t t00 = texture[y0 * tex_width + x0];
-	uint32_t t01 = texture[y1 * tex_width + x0];
-	uint32_t t10 = texture[y0 * tex_width + x1];
-	uint32_t t11 = texture[y1 * tex_width + x1];
-
-	float u_weight = u - x0;
-	float v_weight = v - y0;
-
-	vector4_t c00, c10, c01, c11;
-	to_color(t00, c00);	
-	to_color(t10, c10);
-	to_color(t01, c01);
-	to_color(t11, c11);
-
-	// bilinear interpolation
-	vector4_t tu0, tu1, c;
-	lerp(tu0, c00, c10, u_weight);
-	lerp(tu1, c01, c11, u_weight);
-	lerp(c, tu0, tu1, v_weight);
-
-	return c;
-
 }
 
 void write_pixel(int x, int y, uint32_t color)
@@ -138,7 +107,7 @@ void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	vector3_t wpos = p.wpos / p.pos.w;
 
-	vector4_t albedo = texture_sample(uv);
+	vector4_t albedo = albedo_tex.sample(uv);
 
 	float NoL = dot(wnor, uniformbuffer.light_dir);
 	NoL = max(NoL, 0.15f);
@@ -161,9 +130,39 @@ void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 }
 
-vector4_t fresenl_schlick(float HoV, vector4_t& f0)
+vector4_t F_fresenl_schlick(float VoH, vector4_t& f0)
 {
-	return f0 + (vector4_t(1.0f, 1.0f, 1.0f) - f0) * pow(1 - HoV, 5.0f);
+	const vector4_t cOone(1.0f, 1.0f, 1.0f, 1.0f);
+	return f0 + (cOone - f0) * pow(1.0f - VoH, 5.0f);
+}
+
+// GGX / Trowbridge-Reitz
+// [Walter et al. 2007, "Microfacet models for refraction through rough surfaces"]
+float D_Trowbridge_Reitz_GGX(float a2, float NoH)
+{
+	float d = NoH * NoH * (a2 - 1) + 1.0f;
+	return a2 / (cPI * d * d);
+}
+
+// Tuned to match behavior of Vis_Smith
+// [Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"]
+float V_Schlick_GGX(float a2, float NoV, float NoL)
+{
+	float k = sqrt(a2) * 0.5f;
+	float Vis_SchlickV = NoV * (1.0f - k) + k;
+	float Vis_SchlickL = NoL * (1.0f - k) + k;
+	return 0.25f / (Vis_SchlickV * Vis_SchlickL);
+}
+
+// Smith term for GGX
+// [Smith 1967, "Geometrical shadowing of a random rough surface"]
+float V_smith_GGX(float a2, float NoV, float NoL)
+{
+	// V = G / (NoL * NoV)
+	float Vis_SmithV = NoV + sqrt(NoV * (NoV - NoV * a2) + a2);
+	float Vis_SmithL = NoL + sqrt(NoL * (NoL - NoL * a2) + a2);
+	float m = Vis_SmithV * Vis_SmithL;
+	return m != 0 ? 1.0f / m : FLT_MAX;
 }
 
 void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
@@ -177,7 +176,7 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	vector3_t wpos = p.wpos / p.pos.w;
 
-	vector4_t albedo = texture_sample(uv);
+	vector4_t albedo = albedo_tex.sample(uv);
 
 	float NoL = dot(wnor, uniformbuffer.light_dir);
 	NoL = max(NoL, 0.15f);
@@ -191,6 +190,13 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	// (v + l) / 2
 	vector3_t h = v + uniformbuffer.light_dir;
 	h.normalize();
+
+	//vector4_t metalness = 
+
+	vector4_t temp(0.04f, 0.04f, 0.04f, 0.04f);
+	//vector4_t f0 = lerp(temp, albedo, metalness);
+
+//	F_fresenl_schlick(NoL, )
 
 }
 
@@ -549,35 +555,6 @@ HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
 
 }
 
-
-void load_tex(const char* tex_path, uint32_t*& src_tex, int& tex_w, int& tex_h)
-{
-	int components = 0;
-	stbi_uc* st_img = stbi_load(tex_path, &tex_w, &tex_h, &components, STBI_rgb_alpha);
-	if (st_img == nullptr)
-	{
-		// if we haven't returned, it's because we failed to load the file.
-		printf("Failed to load image %s\nReason: %s\n", tex_path, stbi_failure_reason());
-		return;
-	}
-
-	src_tex = new uint32_t[tex_w * tex_h];
-
-	for (int i = 0; i < tex_h; ++i) {
-		for (int j = 0; j < tex_w; ++j) {
-			int pidx = (tex_h - 1 - i) * tex_w + j;
-			vector4_t c;
-			c.b = st_img[pidx * 4 + 0] / 255.0f;
-			c.g = st_img[pidx * 4 + 1] / 255.0f;
-			c.r = st_img[pidx * 4 + 2] / 255.0f;
-			c.a = st_img[pidx * 4 + 3] / 255.0f;
-			src_tex[pidx] = makefour(c);
-		}
-	}
-
-	stbi_image_free(st_img);
-}
-
 int main(void)
 {
 	width = 800;
@@ -605,7 +582,9 @@ int main(void)
 	zbuffer = new float[width * height];
 	memset(zbuffer, 0, width * height * sizeof(float));
 
-	load_tex("./albedo.png", texture, tex_width, tex_height);
+	albedo_tex.load_tex("./albedo.png");
+	roughness_tex.load_tex("./roughness.png");
+	metalness_tex.load_tex("./metalness.png");
 
 	uniformbuffer.eye.set(eyedist, 0.0f, 0.0f);
 	uniformbuffer.light_dir = (1.0f, 0.0f, 0.0f);

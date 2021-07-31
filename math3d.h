@@ -1,5 +1,5 @@
-#ifndef __MATH3D_H
-#define __MATH3D_H
+#ifndef __MATH3D_H__
+#define __MATH3D_H__
 
 const float cEpslion = 1e-6f;
 const float cPI = 3.1415926f;
@@ -467,7 +467,7 @@ uint8_t to_color_int(float c)
 	return (uint8_t)cint;
 }
 
-uint32_t makefour(const vector4_t& color)
+unsigned int makefour(const vector4_t& color)
 {
 	return to_color_int(color.r)
 		| to_color_int(color.g) << 8
@@ -475,7 +475,7 @@ uint32_t makefour(const vector4_t& color)
 		| to_color_int(color.a) << 24;
 }
 
-void to_color(uint32_t cint, vector4_t& color)
+void to_color(unsigned int cint, vector4_t& color)
 {
 	color.r = cRevt255 * (cint & 0xff);
 	color.g = cRevt255 * ((cint >> 8) & 0xff);
@@ -483,9 +483,9 @@ void to_color(uint32_t cint, vector4_t& color)
 	color.a = cRevt255 * ((cint >> 24) & 0xff);
 }
 
-uint32_t lerp(uint32_t x1, uint32_t x2, float t)
+unsigned int lerp(unsigned int x1, unsigned int x2, float t)
 {
-	return (uint32_t)(x1 * (1.0f - t) + x2 * t + 0.5f);
+	return (unsigned int)(x1 * (1.0f - t) + x2 * t + 0.5f);
 }
 
 float lerp(float x1, float x2, float t)
@@ -537,16 +537,16 @@ struct model_base_t
 */
 struct sphere_t : public model_base_t
 {
-	sphere_t(uint32_t seg)
+	sphere_t(int seg)
 	{
 		gen_sphere(seg, seg * 2);
 	}
 private:
-	void assign_vertex(uint32_t v_idx, const vector3_t& p);
-	void gen_sphere(uint32_t seg1, uint32_t seg2);
+	void assign_vertex(int v_idx, const vector3_t& p);
+	void gen_sphere(int seg1, int seg2);
 };
 
-inline void sphere_t::assign_vertex(uint32_t v_idx, const vector3_t& p)
+inline void sphere_t::assign_vertex(int v_idx, const vector3_t& p)
 {
 	m_model_vertex[v_idx].pos.set(p.x, p.y, p.z);
 	m_model_vertex[v_idx].nor.set(p.x, p.y, p.z);
@@ -554,24 +554,24 @@ inline void sphere_t::assign_vertex(uint32_t v_idx, const vector3_t& p)
 	m_model_vertex[v_idx].color.set(1, 0, 0, 1);
 }
 
-inline void sphere_t::gen_sphere(uint32_t seg1, uint32_t seg2)
+inline void sphere_t::gen_sphere(int seg1, int seg2)
 {
-	uint32_t v_count = (seg1 - 1) * seg2 + 2;
+	int v_count = (seg1 - 1) * seg2 + 2;
 	m_model_vertex.resize(v_count);
 	m_vertex_post.resize(v_count);
 
 	assign_vertex(0, vector3_t(0, 0, 1.0f));
-	for (uint32_t i = 0; i < seg1 - 1; ++i)
+	for (int i = 0; i < seg1 - 1; ++i)
 	{
 		float alpha = cPI * (i + 1) / seg1;
 		float radius = sin(alpha);
 		float z = cos(alpha);
-		for (uint32_t j = 0; j < seg2; ++j)
+		for (int j = 0; j < seg2; ++j)
 		{
 			float beta = 2.0f * cPI * j / seg2;
 			float x = radius * cos(beta);
 			float y = radius * sin(beta);
-			uint32_t v_idx = i * seg2 + j + 1;
+			int v_idx = i * seg2 + j + 1;
 			assign_vertex(v_idx, vector3_t(x, y, z));
 		}
 	}
@@ -579,8 +579,8 @@ inline void sphere_t::gen_sphere(uint32_t seg1, uint32_t seg2)
 	assign_vertex(v_count - 1, vector3_t(0, 0, -1.0f));
 	m_model_indices.resize((seg1 * 2 - 2) * 3 * seg2);
 
-	uint32_t tri = 0;
-	for (uint32_t j = 1; j < seg2 + 1; ++j)
+	int tri = 0;
+	for (int j = 1; j < seg2 + 1; ++j)
 	{
 		m_model_indices[tri * 3 + 0] = 0;
 		m_model_indices[tri * 3 + 1] = j;
@@ -588,9 +588,9 @@ inline void sphere_t::gen_sphere(uint32_t seg1, uint32_t seg2)
 		++tri;
 	}
 
-	for (uint32_t i = 1; i < seg1 - 1; ++i)
+	for (int i = 1; i < seg1 - 1; ++i)
 	{
-		for (uint32_t j = 1; j < seg2 + 1; ++j)
+		for (int j = 1; j < seg2 + 1; ++j)
 		{
 			m_model_indices[tri * 3 + 0] = (i - 1) * seg2 + j;
 			m_model_indices[tri * 3 + 1] = i * seg2 + j;
@@ -603,7 +603,7 @@ inline void sphere_t::gen_sphere(uint32_t seg1, uint32_t seg2)
 		}
 	}
 
-	for (uint32_t j = 1; j < seg2 + 1; ++j)
+	for (int j = 1; j < seg2 + 1; ++j)
 	{
 		m_model_indices[tri * 3 + 0] = (seg1 - 2) * seg2 + (j % seg2) + 1;
 		m_model_indices[tri * 3 + 1] = (seg1 - 2) * seg2 + j;
@@ -663,4 +663,4 @@ struct cube_t : public model_base_t {
 
 };
 
-#endif
+#endif //__MATH3D_H__
