@@ -161,6 +161,8 @@ void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 }
 
+
+//
 vector3_t F_fresenl_schlick(float VoH, vector3_t& f0)
 {
 	return f0 + (cOne - f0) * pow(1.0f - VoH, 5.0f);
@@ -178,6 +180,7 @@ float D_Trowbridge_Reitz_GGX(float a2, float NoH)
 // [Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"]
 float V_Schlick_GGX(float a2, float NoV, float NoL)
 {
+	// V = G / (NoL * NoV)
 	float k = sqrt(a2) * 0.5f;
 	float Vis_SchlickV = NoV * (1.0f - k) + k;
 	float Vis_SchlickL = NoL * (1.0f - k) + k;
@@ -206,11 +209,6 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	vector3_t wpos = p.wpos / p.pos.w;
 
-	if (wpos.y > 0.98f)
-	{
-		int kkk = 0;
-	}
-
 	vector3_t albedo = albedo_tex.sample(uv).to_vec3();
 
 	vector4_t roughness = roughness_tex.sample(uv);
@@ -228,7 +226,7 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	float NoH = max(dot(wnor, h), 0);
 	float NoV = max(dot(wnor, v), 0);
 
-	float a = roughness.a;
+	float a = roughness.a * roughness.a;
 	float a2 = a * a;
 
 	float metallic = 0.88f;
