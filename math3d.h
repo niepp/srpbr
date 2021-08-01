@@ -637,10 +637,15 @@ inline void sphere_t::gen_sphere(int seg1, int seg2)
 
 	for (int j = 1; j < seg2 + 1; ++j)
 	{
-		m_model_indices[tri * 3 + 0] = (seg1 - 2) * seg2 + (j % seg2) + 1;
-		m_model_indices[tri * 3 + 1] = (seg1 - 2) * seg2 + j;
+		m_model_indices[tri * 3 + 0] = (seg1 - 2) * seg2 + j;
+		m_model_indices[tri * 3 + 1] = (seg1 - 2) * seg2 + (j % seg2) + 1;
 		m_model_indices[tri * 3 + 2] = v_count - 1;
 		++tri;
+	}
+
+	for (int i = 0; i < tri; ++i)
+	{
+		std::swap(m_model_indices[i * 3 + 0], m_model_indices[i * 3 + 1]);
 	}
 
 }

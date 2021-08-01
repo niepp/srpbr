@@ -63,6 +63,7 @@ uint32_t *framebuffer = nullptr;
 float *zbuffer = nullptr;
 
 texture2d_t albedo_tex;
+texture2d_t metallic_tex;
 texture2d_t roughness_tex;
 texture2d_t normal_tex;
 
@@ -210,8 +211,8 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	vector3_t wpos = p.wpos / p.pos.w;
 
 	vector3_t albedo = albedo_tex.sample(uv).to_vec3();
-
-	vector4_t roughness = roughness_tex.sample(uv);
+	vector4_t metallic_texel = metallic_tex.sample(uv);
+	vector4_t roughness_texel = roughness_tex.sample(uv);
 
 	vector3_t v = uniformbuffer.eye - wpos;
 	v.normalize();
@@ -226,10 +227,11 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	float NoH = max(dot(wnor, h), 0);
 	float NoV = max(dot(wnor, v), 0);
 
-	float a = roughness.a * roughness.a;
+	float metallic = metallic_texel.r;
+	float roughness = roughness_texel.r;
+	float a = roughness * roughness;
 	float a2 = a * a;
 
-	float metallic = 0.88f;
 	vector3_t temp(0.04f, 0.04f, 0.04f);
 	vector3_t f0 = lerp(temp, albedo, metallic);
 
@@ -458,7 +460,7 @@ void update(model_base_t *model)
 		vector4_t v02 = vb_post[i2].pos - vb_post[i0].pos;
 
 		float det_xy = v01.x * v02.y - v01.y * v02.x;
-		if (det_xy < 0.0f)
+		if (det_xy > 0.0f)
 		{
 			// backface culling
 			continue;
@@ -547,6 +549,7 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			shading_model = (shading_model_t)((int)shading_model + 1);
 			if (shading_model == shading_model_t::cSM_MAX)
 				shading_model = shading_model_t::cSM_Color;
+			std::cout << (int)shading_model << std::endl;
 			break;
 		case 'S':
 			has_spec = !has_spec;
@@ -641,9 +644,10 @@ int main(void)
 	zbuffer = new float[width * height];
 	memset(zbuffer, 0, width * height * sizeof(float));
 
-	albedo_tex.load_tex("./albedo.png");
-	roughness_tex.load_tex("./roughness.png");
-	normal_tex.load_tex("./normal.png");
+	albedo_tex.load_tex("./rustediron2_basecolor.png");
+	metallic_tex.load_tex("./rustediron2_metallic.png");
+	roughness_tex.load_tex("./rustediron2_roughness.png");
+	normal_tex.load_tex("./rustediron2_normal.png");
 
 	uniformbuffer.eye.set(0.0f, eyedist, 0);
 	uniformbuffer.light_dir.set(0.0f, -1.0f, 0.0f);
