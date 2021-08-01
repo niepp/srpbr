@@ -29,7 +29,11 @@ struct vector3_t
 		};
 	};
 
-	vector3_t(float _x = 0, float _y = 0, float _z = 0) :
+	vector3_t() :
+		x(0.0f), y(0.0f), z(0.0f)
+	{ }
+
+	vector3_t(float _x, float _y, float _z) :
 		x(_x), y(_y), z(_z)
 	{ }
 
@@ -107,6 +111,11 @@ struct vector3_t
 		return vector3_t(x * reci, y * reci, z * reci);
 	}
 
+	vector3_t operator *(const vector3_t& vec)
+	{
+		return vector3_t(x * vec.x, y * vec.y, z * vec.z);
+	}
+
 	float length() const
 	{
 		float sq = x * x + y * y + z * z;
@@ -142,7 +151,11 @@ struct vector4_t
 		};
 	};
 
-	vector4_t(float _x = 0, float _y = 0, float _z = 0, float _w = 1.0f):
+	vector4_t() :
+		x(0.0f), y(0.0f), z(0.0f), w(1.0f)
+	{ }
+
+	vector4_t(float _x, float _y, float _z, float _w = 1.0f):
 		x(_x), y(_y), z(_z), w(_w) 
 	{ }
 
@@ -230,6 +243,11 @@ struct vector4_t
 		return vector4_t(x * reci, y * reci, z * reci, w * reci);
 	}
 
+	vector4_t operator *(const vector4_t& vec)
+	{
+		return vector4_t(x * vec.x, y * vec.y, z * vec.z, w * vec.w);
+	}
+
 	float length() const
 	{
 		float sq = x * x + y * y + z * z + w * w;
@@ -255,6 +273,12 @@ struct vector4_t
 		z *= inv;
 		w *= inv;
 	}
+
+	vector3_t to_vec3() const
+	{
+		return vector3_t(x, y, z);
+	}
+
 };
 
 inline float dot(const vector3_t& a, const vector3_t& b)
@@ -493,34 +517,42 @@ float lerp(float x1, float x2, float t)
 	return x1 + (x2 - x1) * t;
 }
 
-void lerp(texcoord_t& p, const texcoord_t& a, const texcoord_t& b, float w)
+texcoord_t lerp(const texcoord_t& a, const texcoord_t& b, float w)
 {
+	texcoord_t p;
 	p.u = lerp(a.u, b.u, w);
 	p.v = lerp(a.v, b.v, w);
+	return p;
 }
 
-void lerp(vector3_t& p, const vector3_t& a, const vector3_t& b, float w)
+vector3_t lerp(const vector3_t& a, const vector3_t& b, float w)
 {
+	vector3_t p;
 	p.x = lerp(a.x, b.x, w);
 	p.y = lerp(a.y, b.y, w);
 	p.z = lerp(a.z, b.z, w);
+	return p;
 }
 
-void lerp(vector4_t& p, const vector4_t& a, const vector4_t& b, float w)
+vector4_t lerp(const vector4_t& a, const vector4_t& b, float w)
 {
+	vector4_t p;
 	p.x = lerp(a.x, b.x, w);
 	p.y = lerp(a.y, b.y, w);
 	p.z = lerp(a.z, b.z, w);
 	p.w = lerp(a.w, b.w, w);
+	return p;
 }
 
-void lerp(interp_vertex_t& p, const interp_vertex_t& a, const interp_vertex_t& b, float w)
+interp_vertex_t lerp( const interp_vertex_t& a, const interp_vertex_t& b, float w)
 {
-	lerp(p.wpos, a.wpos, b.wpos, w);
-	lerp(p.pos, a.pos, b.pos, w);
-	lerp(p.nor, a.nor, b.nor, w);
-	lerp(p.uv, a.uv, b.uv, w);
-	lerp(p.color, a.color, b.color, w);
+	interp_vertex_t p;
+	p.wpos = lerp(a.wpos, b.wpos, w);
+	p.pos = lerp(a.pos, b.pos, w);
+	p.nor = lerp(a.nor, b.nor, w);
+	p.uv = lerp(a.uv, b.uv, w);
+	p.color = lerp(a.color, b.color, w);
+	return p;
 }
 
 

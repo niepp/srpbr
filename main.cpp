@@ -7,6 +7,8 @@
 #include "math3d.h"
 #include "texture.h"
 
+const vector3_t cOne(1.0f, 1.0f, 1.0f);
+
 /*
  有一边是水平的三角形
  l----------r
@@ -31,6 +33,7 @@ enum class shading_model_t
 	cSM_MAX,
 };
 
+bool has_spec = true;
 
 float reci_freq;
 int64_t tick_start;
@@ -40,7 +43,7 @@ HDC screenDC;
 
 int width = 0, height = 0;
 float angle_speed = 1.0f;
-float light_angle = 0;
+float light_angle = cPI;
 float eyedist = 3.5f;
 
 struct uniformbuffer_t
@@ -51,7 +54,7 @@ struct uniformbuffer_t
 	matrix_t proj;
 	matrix_t mvp;
 	vector3_t light_dir;
-	float light_intensity;
+	vector3_t light_intensity;
 	float specular_power;
 };
 
@@ -61,7 +64,7 @@ float *zbuffer = nullptr;
 
 texture2d_t albedo_tex;
 texture2d_t roughness_tex;
-texture2d_t metalness_tex;
+texture2d_t normal_tex;
 
 shading_model_t shading_model = shading_model_t::cSM_Phong;
 
@@ -96,6 +99,34 @@ bool depth_test(int x, int y, float z)
 	return z >= nowz;
 }
 
+float gamma(float linear_color)
+{
+	const float cInvg = 1.0f / 2.2f;
+	return pow(linear_color, cInvg);
+}
+
+// hdr tone mapping
+float aces(float value)
+{
+	float a = 2.51f;
+	float b = 0.03f;
+	float c = 2.43f;
+	float d = 0.59f;
+	float e = 0.14f;
+	value = (value * (a * value + b)) / (value * (c * value + d) + e);
+	return clamp(value, 0.0f, 1.0f);
+}
+
+void reinhard_mapping(vector3_t& color)
+{
+	for (int i = 0; i < 3; ++i)
+	{
+		color.vec[i] = aces(color.vec[i]);
+		color.vec[i] = gamma(color.vec[i]);
+	}
+}
+
+
 void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 {
 	texcoord_t uv = p.uv;
@@ -106,41 +137,40 @@ void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 	wnor.normalize();
 
 	vector3_t wpos = p.wpos / p.pos.w;
+	vector3_t l = -uniformbuffer.light_dir;
 
 	vector4_t albedo = albedo_tex.sample(uv);
 
-	float NoL = dot(wnor, uniformbuffer.light_dir);
+	float NoL = dot(wnor, l);
 	NoL = max(NoL, 0.15f);
 
-	vector4_t diffuse;
-	diffuse = albedo * uniformbuffer.light_intensity * NoL;
+	vector3_t diffuse = albedo.to_vec3() * uniformbuffer.light_intensity * NoL;
 
-	vector3_t v = uniformbuffer.eye - p.wpos;
+	vector3_t v = uniformbuffer.eye - wpos;
 	v.normalize();
 
 	// (v + l) / 2
-	vector3_t h = v + uniformbuffer.light_dir;
+	vector3_t h = v + l;
 	h.normalize();
 
-	float NoH = dot(wnor, h);
-	vector4_t ks(0.5f, 0.5f, 0.5f);
-	vector4_t specular = ks * uniformbuffer.light_intensity * max(0.0f, pow(NoH, uniformbuffer.specular_power));
+	float NoH = max(dot(wnor, h), 0.0f);
+	vector3_t ks(0.5f, 0.5f, 0.5f);
+	vector3_t specular = ks * uniformbuffer.light_intensity * max(0.0f, pow(NoH, uniformbuffer.specular_power));
 
-	out_color = diffuse + specular;
+	out_color = diffuse + (has_spec ? specular : vector3_t());
 
 }
 
-vector4_t F_fresenl_schlick(float VoH, vector4_t& f0)
+vector3_t F_fresenl_schlick(float VoH, vector3_t& f0)
 {
-	const vector4_t cOone(1.0f, 1.0f, 1.0f, 1.0f);
-	return f0 + (cOone - f0) * pow(1.0f - VoH, 5.0f);
+	return f0 + (cOne - f0) * pow(1.0f - VoH, 5.0f);
 }
 
 // GGX / Trowbridge-Reitz
 // [Walter et al. 2007, "Microfacet models for refraction through rough surfaces"]
 float D_Trowbridge_Reitz_GGX(float a2, float NoH)
 {
-	float d = NoH * NoH * (a2 - 1) + 1.0f;
+	float d = NoH * NoH * (a2 - 1.0f) + 1.0f;
 	return a2 / (cPI * d * d);
 }
 
@@ -176,27 +206,50 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	vector3_t wpos = p.wpos / p.pos.w;
 
-	vector4_t albedo = albedo_tex.sample(uv);
+	vector3_t albedo = albedo_tex.sample(uv).to_vec3();
 
-	float NoL = dot(wnor, uniformbuffer.light_dir);
-	NoL = max(NoL, 0.15f);
+	vector4_t roughness = roughness_tex.sample(uv);
 
-	vector4_t diffuse;
-	diffuse = albedo * uniformbuffer.light_intensity * NoL;
-
-	vector3_t v = uniformbuffer.eye - p.wpos;
+	vector3_t v = uniformbuffer.eye - wpos;
 	v.normalize();
 
 	// (v + l) / 2
 	vector3_t h = v + uniformbuffer.light_dir;
 	h.normalize();
 
-	//vector4_t metalness = 
+	float NoL = max(dot(wnor, uniformbuffer.light_dir), 0);
+	float NoH = max(dot(wnor, h), 0);
+	float NoV = max(dot(wnor, v), 0);
 
-	vector4_t temp(0.04f, 0.04f, 0.04f, 0.04f);
-	//vector4_t f0 = lerp(temp, albedo, metalness);
+	vector3_t diffuse = (albedo * uniformbuffer.light_intensity * NoL);
 
-//	F_fresenl_schlick(NoL, )
+	float a = roughness.a;
+	float a2 = a * a;
+
+	float metallic = 0.9f;
+	vector3_t temp(0.04f, 0.04f, 0.04f);
+	vector3_t f0 = lerp(temp, albedo, metallic);
+
+	vector3_t F = F_fresenl_schlick(NoL, f0);
+
+	float D = D_Trowbridge_Reitz_GGX(a2, NoH);
+
+	float V = V_smith_GGX(a2, NoV, NoL);
+
+	vector3_t cook_torrance_brdf = F * D * V / 4.0f;
+
+	vector3_t ks = F;
+	vector3_t kd = (cOne - F) * (1.0f - metallic);
+
+	vector3_t I = uniformbuffer.light_intensity * NoL;
+
+	vector3_t diffuse_brdf = albedo / cPI;
+
+	vector3_t outI = (kd * diffuse_brdf + ks * cook_torrance_brdf) * I;
+
+	reinhard_mapping(outI);
+
+	out_color = outI;
 
 }
 
@@ -228,10 +281,9 @@ void scan_horizontal(const interp_vertex_t& vl, const interp_vertex_t& vr, int y
 	int right = (int)(vr.pos.x + 0.5f);
 	for (int i = left; i < right; ++i)
 	{
-		interp_vertex_t p;
 		float w = (i - vl.pos.x) / dist;
 		w = clamp(w, 0.0f, 1.0f);
-		lerp(p, vl, vr, w);
+		interp_vertex_t p = lerp(vl, vr, w);
 		if (depth_test(i, y, p.pos.z))
 		{
 			pixel_process(i, y, p);
@@ -256,15 +308,13 @@ void scan_triangle(scan_tri_t *sctri)
 	// bottom要往小取整，top要往大取整，避免三角形之间的接缝空隙！
 	int bottom = (int)(ymin);
 	int top = (int)(ymax + 0.5f);
-
-	interp_vertex_t vl, vr;
 	for (int i = bottom; i < top; ++i)
 	{
 		float cury = i + 0.0f;
 		float w = (ydist > 0 ? cury - ymin : cury - ymax) / ydist;
 		w = clamp(w, 0.0f, 1.0f);
-		lerp(vl, sctri->l, sctri->p, w);
-		lerp(vr, sctri->r, sctri->p, w);
+		interp_vertex_t vl = lerp(sctri->l, sctri->p, w);
+		interp_vertex_t vr = lerp(sctri->r, sctri->p, w);
 		scan_horizontal(vl, vr, i);
 	}
 
@@ -347,9 +397,8 @@ void draw_triangle(const interp_vertex_t& p0, const interp_vertex_t& p1, const i
 	}
 	else
 	{
-		interp_vertex_t mid;
 		float w = (p1.pos.y - p0.pos.y) / (p2.pos.y - p0.pos.y);
-		lerp(mid, p0, p2, w);
+		interp_vertex_t mid = lerp(p0, p2, w);
 		mid.pos.y = p1.pos.y;
 
 		uptri.p = p2;
@@ -402,7 +451,7 @@ void update(model_base_t *model)
 		vector4_t v02 = vb_post[i2].pos - vb_post[i0].pos;
 
 		float det_xy = v01.x * v02.y - v01.y * v02.x;
-		if (det_xy > 0.0f)
+		if (det_xy < 0.0f)
 		{
 			// backface culling
 			continue;
@@ -473,9 +522,9 @@ void main_loop()
 void update_light(float new_angle)
 {
 	light_angle = new_angle;
-	uniformbuffer.light_dir.x = 0.96f * sin(light_angle);
-	uniformbuffer.light_dir.y = 0.96f * cos(light_angle);
-	uniformbuffer.light_dir.z = -0.2f;
+	uniformbuffer.light_dir.x = sin(light_angle);
+	uniformbuffer.light_dir.y = cos(light_angle);
+	uniformbuffer.light_dir.z = 0;
 }
 
 LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -491,6 +540,9 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			shading_model = (shading_model_t)((int)shading_model + 1);
 			if (shading_model == shading_model_t::cSM_MAX)
 				shading_model = shading_model_t::cSM_Color;
+			break;
+		case 'S':
+			has_spec = !has_spec;
 			break;
 		case VK_UP:
 			eyedist += 0.1f;
@@ -584,11 +636,11 @@ int main(void)
 
 	albedo_tex.load_tex("./albedo.png");
 	roughness_tex.load_tex("./roughness.png");
-	metalness_tex.load_tex("./metalness.png");
+	normal_tex.load_tex("./normal.png");
 
-	uniformbuffer.eye.set(eyedist, 0.0f, 0.0f);
-	uniformbuffer.light_dir = (1.0f, 0.0f, 0.0f);
-	uniformbuffer.light_intensity = 2.0f;
+	uniformbuffer.eye.set(0.0f, eyedist, 0);
+	uniformbuffer.light_dir.set(0.0f, -1.0f, 0.0f);
+	uniformbuffer.light_intensity.set(1.0f, 1.0f, 1.0f);
 	uniformbuffer.specular_power = 8.0f;
 
 	float aspect = 1.0f * width / height;

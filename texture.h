@@ -17,14 +17,13 @@ struct texture2d_t
 	{
 		int components = 0;
 		stbi_uc* st_img = stbi_load(tex_path, &width, &height, &components, STBI_rgb_alpha);
-		if (st_img == nullptr)
-		{
+		if (st_img == nullptr) {
 			// if we haven't returned, it's because we failed to load the file.
 			printf("Failed to load image %s\nReason: %s\n", tex_path, stbi_failure_reason());
 			return;
 		}
 
-		texture = new uint32_t[width * height];
+		texture = new unsigned int[width * height];
 
 		for (int i = 0; i < height; ++i)
 		{
@@ -65,13 +64,9 @@ struct texture2d_t
 		to_color(t11, c11);
 
 		// bilinear interpolation
-		vector4_t tu0, tu1, c;
-		lerp(tu0, c00, c10, u_weight);
-		lerp(tu1, c01, c11, u_weight);
-		lerp(c, tu0, tu1, v_weight);
-
-		return c;
-
+		vector4_t tu0 = lerp(c00, c10, u_weight);
+		vector4_t tu1 = lerp(c01, c11, u_weight);
+		return lerp(tu0, tu1, v_weight);
 	}
 };
 
