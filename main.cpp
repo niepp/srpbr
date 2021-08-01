@@ -66,7 +66,7 @@ texture2d_t albedo_tex;
 texture2d_t roughness_tex;
 texture2d_t normal_tex;
 
-shading_model_t shading_model = shading_model_t::cSM_Phong;
+shading_model_t shading_model = shading_model_t::cSM_PBR;
 
 sphere_t sphere_model(12);
 cube_t cube_model;
@@ -206,6 +206,11 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	vector3_t wpos = p.wpos / p.pos.w;
 
+	if (wpos.y > 0.98f)
+	{
+		int kkk = 0;
+	}
+
 	vector3_t albedo = albedo_tex.sample(uv).to_vec3();
 
 	vector4_t roughness = roughness_tex.sample(uv);
@@ -213,20 +218,20 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	vector3_t v = uniformbuffer.eye - wpos;
 	v.normalize();
 
+	vector3_t l = -uniformbuffer.light_dir;
+
 	// (v + l) / 2
-	vector3_t h = v + uniformbuffer.light_dir;
+	vector3_t h = v + l;
 	h.normalize();
 
-	float NoL = max(dot(wnor, uniformbuffer.light_dir), 0);
+	float NoL = max(dot(wnor, l), 0);
 	float NoH = max(dot(wnor, h), 0);
 	float NoV = max(dot(wnor, v), 0);
-
-	vector3_t diffuse = (albedo * uniformbuffer.light_intensity * NoL);
 
 	float a = roughness.a;
 	float a2 = a * a;
 
-	float metallic = 0.9f;
+	float metallic = 0.88f;
 	vector3_t temp(0.04f, 0.04f, 0.04f);
 	vector3_t f0 = lerp(temp, albedo, metallic);
 
@@ -243,13 +248,17 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	vector3_t I = uniformbuffer.light_intensity * NoL;
 
-	vector3_t diffuse_brdf = albedo / cPI;
+	vector3_t diffuse_brdf = albedo;// / cPI;
 
-	vector3_t outI = (kd * diffuse_brdf + ks * cook_torrance_brdf) * I;
+	vector3_t final_color = (kd * diffuse_brdf) * I;
 
-	reinhard_mapping(outI);
+	if (has_spec) {
+		final_color += ks * cook_torrance_brdf * I;
+	}
 
-	out_color = outI;
+	reinhard_mapping(final_color);
+
+	out_color = final_color;
 
 }
 
