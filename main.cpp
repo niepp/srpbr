@@ -6,6 +6,7 @@
 
 #include "math3d.h"
 #include "texture.h"
+#include "model.h"
 
 const vector3_t cOne(1.0f, 1.0f, 1.0f);
 
@@ -69,8 +70,7 @@ texture2d_t normal_tex;
 
 shading_model_t shading_model = shading_model_t::cSM_PBR;
 
-sphere_t sphere_model(12);
-cube_t cube_model;
+model_t sphere_model;
 
 template <typename T, int n>
 int array_size(T(&)[n])
@@ -425,7 +425,7 @@ void draw_triangle(const interp_vertex_t& p0, const interp_vertex_t& p1, const i
 
 }
 
-void update(model_base_t *model)
+void update(model_t *model)
 {
 	memset(framebuffer, 0, width * height * sizeof(uint32_t));
 	memset(zbuffer, 0, width * height * sizeof(float));
@@ -460,7 +460,7 @@ void update(model_base_t *model)
 		vector4_t v02 = vb_post[i2].pos - vb_post[i0].pos;
 
 		float det_xy = v01.x * v02.y - v01.y * v02.x;
-		if (det_xy > 0.0f)
+		if (det_xy >= 0.0f)
 		{
 			// backface culling
 			continue;
@@ -656,6 +656,8 @@ int main(void)
 
 	float aspect = 1.0f * width / height;
 	uniformbuffer.proj.set_perspective(cPI * 0.5f, aspect, 1.0f, 500.0f);
+
+	sphere_model.load("mesh_sphere.obj");
 
 	update_light(light_angle);
 	main_loop();
