@@ -147,6 +147,7 @@ struct model_t
 			vtx.pos = verts[idx.iv] * 0.01f;
 			vtx.uv = uvs[idx.it];
 			vtx.nor = norms[idx.in];
+			vtx.color.set(1, 1, 1);
 		}
 
 		for (size_t i = 0; i < faces.size(); ++i)

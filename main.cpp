@@ -29,6 +29,7 @@ struct scan_tri_t
 enum class shading_model_t
 {
 	cSM_Color = 0,
+	cSM_Wireframe,
 	cSM_Phong,
 	cSM_PBR,
 	cSM_MAX,
@@ -425,6 +426,75 @@ void draw_triangle(const interp_vertex_t& p0, const interp_vertex_t& p1, const i
 
 }
 
+void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c)
+{
+	vector4_t v0 = p0;
+	vector4_t v1 = p1;
+	float dx = std::abs(v0.x - v1.x);
+	float dy = std::abs(v0.y - v1.y);
+
+	if (dy <= dx)
+	{	
+		if (v0.x > v1.x) {
+			std::swap(v0, v1);
+		}
+
+		int xmin = (int)(v0.x);
+		int xmax = (int)(v1.x + 0.5f);
+		float y = v0.y;
+		write_pixel(xmin, (int)y, c);
+
+		float delta = (v1.y - v0.y) / dx;
+		for (int x = xmin; x < xmax; ++x)
+		{
+			y += delta;
+			write_pixel(x, (int)(y + 0.5f), c);
+		}
+	}
+	else {
+		if (v0.y > v1.y) {
+			std::swap(v0, v1);
+		}
+
+		int ymin = (int)(v0.y);
+		int ymax = (int)(v1.y + 0.5f);
+		float x = v0.x;
+		write_pixel((int)x, ymin, c);
+
+		float delta = (v1.x - v0.x) / dy;
+		for (int y = ymin; y < ymax; ++y)
+		{
+			x += delta;
+			write_pixel((int)(x + 0.5f), y, c);
+		}
+	}
+
+}
+
+void draw_cartesian_coordinate(const matrix_t& mvp)
+{
+	vector3_t o(0, 0, 0);
+	vector3_t x(1, 0, 0);
+	vector3_t y(0, 1, 0);
+	vector3_t z(0, 0, 1);
+
+	auto transform_to_screen = [](const matrix_t& mvp, const vector3_t& p) -> vector4_t
+	{
+		vector4_t tp = mvp * vector4_t(p, 1.0f);
+		to_screen_coord(&tp);
+		return tp;
+	};
+
+	vector4_t to = transform_to_screen(mvp, o);
+	vector4_t tx = transform_to_screen(mvp, x);
+	vector4_t ty = transform_to_screen(mvp, y);
+	vector4_t tz = transform_to_screen(mvp, z);
+
+	draw_line(to, tx, 0xff0000ff);
+	draw_line(to, ty, 0x00ff00ff);
+	draw_line(to, tz, 0x0000ffff);
+}
+
 void update(model_t *model)
 {
 	memset(framebuffer, 0, width * height * sizeof(uint32_t));
@@ -439,6 +509,8 @@ void update(model_t *model)
 
 	matrix_t mv = mul(uniformbuffer.world, uniformbuffer.view);
 	uniformbuffer.mvp = mul(mv, uniformbuffer.proj);
+
+	draw_cartesian_coordinate(uniformbuffer.mvp);
 
 	model_vertex_vec_t& vb = model->m_model_vertex;
 	interp_vertex_vec_t& vb_post = model->m_vertex_post;
@@ -460,10 +532,8 @@ void update(model_t *model)
 		vector4_t v02 = vb_post[i2].pos - vb_post[i0].pos;
 
 		float det_xy = v01.x * v02.y - v01.y * v02.x;
-		if (det_xy >= 0.0f)
-		{
-			// backface culling
-			continue;
+		if (det_xy < 0.0f) {
+			continue; // backface culling
 		}
 
 		interp_vertex_t* p0 = &vb_post[i0];
@@ -479,8 +549,16 @@ void update(model_t *model)
 		if (p0->pos.y > p2->pos.y) std::swap(p0, p2);
 		if (p1->pos.y > p2->pos.y) std::swap(p1, p2);
 
-		draw_triangle(*p0, *p1, *p2);
-
+		if (shading_model == shading_model_t::cSM_Wireframe)
+		{
+			draw_line(p0->pos, p1->pos, 0xffffffff);
+			draw_line(p1->pos, p2->pos, 0xffffffff);
+			draw_line(p2->pos, p0->pos, 0xffffffff);
+		}
+		else
+		{
+			draw_triangle(*p0, *p1, *p2);
+		}
 	}
 
 }
