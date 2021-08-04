@@ -490,10 +490,6 @@ struct interp_vertex_t
 	vector4_t color;
 };
 
-typedef std::vector<model_vertex_t> model_vertex_vec_t;
-typedef std::vector<interp_vertex_t> interp_vertex_vec_t;
-typedef std::vector<uint16_t> index_vec_t;
-
 template <typename T>
 T clamp(T x, T min, T max)
 {

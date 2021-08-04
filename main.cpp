@@ -69,7 +69,7 @@ texture2d_t metallic_tex;
 texture2d_t roughness_tex;
 texture2d_t normal_tex;
 
-shading_model_t shading_model = shading_model_t::cSM_PBR;
+shading_model_t shading_model = shading_model_t::cSM_Phong;
 
 model_t sphere_model;
 
@@ -509,6 +509,7 @@ void update(model_t *model)
 
 	//angle_speed += 0.008f;
 	uniformbuffer.world.set_rotate(0, 0, 1, angle_speed);
+	uniformbuffer.world.set_translate(0, 0, -0.5f);
 
 	vector3_t at(0.0f, 0.0f, 0.0f);
 	vector3_t up(0.0f, 0.0f, 1.0f);
@@ -539,7 +540,7 @@ void update(model_t *model)
 		vector4_t v02 = vb_post[i2].pos - vb_post[i0].pos;
 
 		float det_xy = v01.x * v02.y - v01.y * v02.x;
-		if (det_xy < 0.0f) {
+		if (det_xy >= 0.0f) {
 			continue; // backface culling
 		}
 
