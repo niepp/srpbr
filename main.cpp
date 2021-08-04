@@ -46,7 +46,7 @@ HDC screenDC;
 int width = 0, height = 0;
 float angle_speed = 1.0f;
 float light_angle = cPI;
-float eyedist = 3.5f;
+float eyedist = 2.5f;
 
 struct uniformbuffer_t
 {
@@ -83,21 +83,21 @@ void write_pixel(int x, int y, uint32_t color)
 {
 	assert(x >= 0 && x < width);
 	assert(y >= 0 && y < height);
-	framebuffer[y * width + x] = color;
+	framebuffer[(height - y - 1) * width + x] = color;
 }
 
 void write_depth(int x, int y, float z)
 {
 	assert(x >= 0 && x < width);
 	assert(y >= 0 && y < height);
-	zbuffer[y * width + x] = z;
+	zbuffer[(height - y - 1) * width + x] = z;
 }
 
 bool depth_test(int x, int y, float z)
 {
 	assert(x >= 0 && x < width);
 	assert(y >= 0 && y < height);
-	float nowz = zbuffer[y * width + x];
+	float nowz = zbuffer[(height - y - 1) * width + x];
 	return z >= nowz;
 }
 
@@ -443,12 +443,13 @@ void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c)
 		int xmax = (int)(v1.x + 0.5f);
 		float y = v0.y;
 		write_pixel(xmin, (int)y, c);
-
-		float delta = (v1.y - v0.y) / dx;
-		for (int x = xmin; x < xmax; ++x)
-		{
-			y += delta;
-			write_pixel(x, (int)(y + 0.5f), c);
+		if (xmax > xmin) {
+			float delta = (v1.y - v0.y) / dx;
+			for (int x = xmin; x < xmax; ++x)
+			{
+				y += delta;
+				write_pixel(x, (int)(y + 0.5f), c);
+			}
 		}
 	}
 	else {
@@ -460,12 +461,13 @@ void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c)
 		int ymax = (int)(v1.y + 0.5f);
 		float x = v0.x;
 		write_pixel((int)x, ymin, c);
-
-		float delta = (v1.x - v0.x) / dy;
-		for (int y = ymin; y < ymax; ++y)
-		{
-			x += delta;
-			write_pixel((int)(x + 0.5f), y, c);
+		if (ymax > ymin) {
+			float delta = (v1.x - v0.x) / dy;
+			for (int y = ymin; y < ymax; ++y)
+			{
+				x += delta;
+				write_pixel((int)(x + 0.5f), y, c);
+			}
 		}
 	}
 
@@ -481,6 +483,11 @@ void draw_cartesian_coordinate(const matrix_t& mvp)
 	auto transform_to_screen = [](const matrix_t& mvp, const vector3_t& p) -> vector4_t
 	{
 		vector4_t tp = mvp * vector4_t(p, 1.0f);
+		float revw = 1.0f / tp.w;
+		tp.x *= revw;
+		tp.y *= revw;
+		tp.z *= revw;
+		tp.w = revw;
 		to_screen_coord(&tp);
 		return tp;
 	};
@@ -490,9 +497,9 @@ void draw_cartesian_coordinate(const matrix_t& mvp)
 	vector4_t ty = transform_to_screen(mvp, y);
 	vector4_t tz = transform_to_screen(mvp, z);
 
-	draw_line(to, tx, 0xff0000ff);
-	draw_line(to, ty, 0x00ff00ff);
-	draw_line(to, tz, 0x0000ffff);
+	draw_line(to, tx, 0xffff0000);
+	draw_line(to, ty, 0xff00ff00);
+	draw_line(to, tz, 0xff0000ff);
 }
 
 void update(model_t *model)
@@ -507,10 +514,10 @@ void update(model_t *model)
 	vector3_t up(0.0f, 0.0f, 1.0f);
 	uniformbuffer.view.set_lookat(uniformbuffer.eye, at, up);
 
-	matrix_t mv = mul(uniformbuffer.world, uniformbuffer.view);
-	uniformbuffer.mvp = mul(mv, uniformbuffer.proj);
+	matrix_t vp = mul(uniformbuffer.view, uniformbuffer.proj);
+	uniformbuffer.mvp = mul(uniformbuffer.world, vp);
 
-	draw_cartesian_coordinate(uniformbuffer.mvp);
+	draw_cartesian_coordinate(vp);
 
 	model_vertex_vec_t& vb = model->m_model_vertex;
 	interp_vertex_vec_t& vb_post = model->m_vertex_post;
@@ -727,7 +734,7 @@ int main(void)
 	roughness_tex.load_tex("./rustediron2_roughness.png");
 	normal_tex.load_tex("./rustediron2_normal.png");
 
-	uniformbuffer.eye.set(0.0f, eyedist, 0);
+	uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
 	uniformbuffer.light_dir.set(0.0f, -1.0f, 0.0f);
 	uniformbuffer.light_intensity.set(1.0f, 1.0f, 1.0f);
 	uniformbuffer.specular_power = 8.0f;

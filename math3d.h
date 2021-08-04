@@ -1,6 +1,22 @@
 #ifndef __MATH3D_H__
 #define __MATH3D_H__
 
+/*
+	 z
+	 ^
+	 |
+	 |
+	 |
+	 |
+	 o--------------> x
+    /
+   /
+ |/_
+ y
+
+the coordinate system same to UE4: left-hand z-up
+*/
+
 const float cEpslion = 1e-6f;
 const float cPI = 3.1415926f;
 const float cRevt255 = 1.0f / 255.0f;
