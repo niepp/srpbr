@@ -46,7 +46,7 @@ HDC screenDC;
 int width = 0, height = 0;
 float angle_speed = 1.0f;
 float light_angle = cPI;
-float eyedist = 2.5f;
+float eyedist = 1.5f;
 
 struct uniformbuffer_t
 {
@@ -69,7 +69,7 @@ texture2d_t metallic_tex;
 texture2d_t roughness_tex;
 texture2d_t normal_tex;
 
-shading_model_t shading_model = shading_model_t::cSM_Phong;
+shading_model_t shading_model = shading_model_t::cSM_PBR;
 
 model_t sphere_model;
 
@@ -146,6 +146,11 @@ void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 	float NoL = dot(wnor, l);
 	NoL = max(NoL, 0.15f);
 
+	if (NoL >= 0.99f)
+	{
+		int kkk = 0;
+	}
+
 	vector3_t diffuse = albedo.to_vec3() * uniformbuffer.light_intensity * NoL;
 
 	vector3_t v = uniformbuffer.eye - wpos;
@@ -165,9 +170,10 @@ void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 
 //
-vector3_t F_fresenl_schlick(float VoH, vector3_t& f0)
+vector3_t F_fresenl_schlick(float HoV, const vector3_t& f0)
 {
-	return f0 + (cOne - f0) * pow(1.0f - VoH, 5.0f);
+	float e = pow(1.0f - HoV, 5.0f);
+	return f0 + (cOne - f0) * e;
 }
 
 // GGX / Trowbridge-Reitz
@@ -227,6 +233,12 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	float NoL = max(dot(wnor, l), 0);
 	float NoH = max(dot(wnor, h), 0);
 	float NoV = max(dot(wnor, v), 0);
+	float HoV = max(dot(h, v), 0);
+
+	if (NoL >= 0.99f)
+	{
+		int kkk = 0;
+	}
 
 	float metallic = metallic_texel.r;
 	float roughness = roughness_texel.r;
@@ -236,22 +248,22 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	vector3_t temp(0.04f, 0.04f, 0.04f);
 	vector3_t f0 = lerp(temp, albedo, metallic);
 
-	vector3_t F = F_fresenl_schlick(NoL, f0);
+	vector3_t F = F_fresenl_schlick(HoV, f0);
 
 	float D = D_Trowbridge_Reitz_GGX(a2, NoH);
 
-	float V = V_smith_GGX(a2, NoV, NoL);
+	float V = V_Schlick_GGX(a2, NoV, NoL);
 
-	vector3_t cook_torrance_brdf = F * D * V / 4.0f;
+	vector3_t cook_torrance_brdf = F * D * V;
 
 	vector3_t ks = F;
 	vector3_t kd = (cOne - F) * (1.0f - metallic);
 
 	vector3_t I = uniformbuffer.light_intensity * NoL;
 
-	vector3_t diffuse_brdf = albedo;// / cPI;
+	vector3_t diffuse_brdf = albedo / cPI;
 
-	vector3_t final_color = (kd * diffuse_brdf) * I;
+	vector3_t final_color = ( diffuse_brdf) * I;
 
 	if (has_spec) {
 		final_color += ks * cook_torrance_brdf * I;
