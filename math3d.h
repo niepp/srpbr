@@ -371,7 +371,6 @@ struct matrix_t
 
 	void set_translate(float x, float y, float z)
 	{
-		set_identity();
 		m[3][0] = x;
 		m[3][1] = y;
 		m[3][2] = z;

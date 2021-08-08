@@ -45,7 +45,7 @@ HDC screenDC;
 
 int width = 0, height = 0;
 float angle_speed = 1.0f;
-float light_angle = cPI;
+vector3_t light_angle(cPI, cPI/2.0f, 0);
 float eyedist = 1.5f;
 
 struct uniformbuffer_t
@@ -453,7 +453,7 @@ void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c)
 			for (int x = xmin; x < xmax; ++x)
 			{
 				y += delta;
-				write_pixel(x, (int)(y + 0.5f), c);
+				write_pixel(x, (int)(y), c);
 			}
 		}
 	}
@@ -471,7 +471,7 @@ void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c)
 			for (int y = ymin; y < ymax; ++y)
 			{
 				x += delta;
-				write_pixel((int)(x + 0.5f), y, c);
+				write_pixel((int)(x), y, c);
 			}
 		}
 	}
@@ -488,7 +488,7 @@ void draw_cartesian_coordinate(const matrix_t& mvp)
 	auto transform_to_screen = [](const matrix_t& mvp, const vector3_t& p) -> vector4_t
 	{
 		vector4_t tp = mvp * vector4_t(p, 1.0f);
-		float revw = 1.0f / tp.w;
+		float revw = std::abs(1.0f / tp.w);
 		tp.x *= revw;
 		tp.y *= revw;
 		tp.z *= revw;
@@ -515,8 +515,11 @@ void update(model_t *model)
 	memset(zbuffer, 0, width * height * sizeof(float));
 
 	//angle_speed += 0.008f;
-	uniformbuffer.world.set_rotate(0, 0, 1, angle_speed);
-	uniformbuffer.world.set_translate(0, 0, -0.5f);
+	matrix_t mscale, mrot;
+	mscale.set_scale(1.6f, 1.6f, 1.6f);
+	mrot.set_rotate(0, 0, 1, angle_speed);
+	uniformbuffer.world = mul(mscale, mrot);
+	uniformbuffer.world.set_translate(0, 0, -0.8f);
 
 	vector3_t at(0.0f, 0.0f, 0.0f);
 	vector3_t up(0.0f, 0.0f, 1.0f);
@@ -607,7 +610,7 @@ void main_loop()
 				tick_start = tick_now;
 				frame_count = 0;
 				TCHAR str[64];
-				::wsprintfW(str, _T("sr3d %d fps"), frame_rate);
+				::wsprintfW(str, _T("srpbr %d fps"), frame_rate);
 				::SetWindowText(hwnd, str);
 			}
 			//update(&cube_model);
@@ -621,12 +624,14 @@ void main_loop()
 	}
 }
 
-void update_light(float new_angle)
+void update_light()
 {
-	light_angle = new_angle;
-	uniformbuffer.light_dir.x = sin(light_angle);
-	uniformbuffer.light_dir.y = cos(light_angle);
-	uniformbuffer.light_dir.z = 0;
+	clamp(light_angle.y, 0.0f, cPI);
+	float cosw = cos(light_angle.y);
+	float sinw = sin(light_angle.y);
+	uniformbuffer.light_dir.x = sin(light_angle.x) * sinw;
+	uniformbuffer.light_dir.y = cos(light_angle.x) * sinw;
+	uniformbuffer.light_dir.z = cosw;
 }
 
 LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -648,18 +653,20 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			has_spec = !has_spec;
 			break;
 		case VK_UP:
-			eyedist += 0.1f;
-			uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
+			light_angle.y += 0.1f;
+			update_light();
 			break;
 		case VK_DOWN:
-			eyedist -= 0.1f;
-			uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
+			light_angle.y -= 0.1f;
+			update_light();
 			break;
 		case VK_LEFT:
-			update_light(light_angle + 0.1f);
+			light_angle.x -= 0.1f;
+			update_light();
 			break;
 		case VK_RIGHT:
-			update_light(light_angle - 0.1f);
+			light_angle.x += 0.1f;
+			update_light();
 			break;
 		default:
 			break;
@@ -716,7 +723,7 @@ int main(void)
 {
 	width = 800;
 	height = 600;
-	hwnd = init_window(GetModuleHandle(NULL), _T("sr3d"), width, height);
+	hwnd = init_window(GetModuleHandle(NULL), _T(""), width, height);
 
 	screenDC = CreateCompatibleDC(GetDC(hwnd));
 
@@ -750,11 +757,11 @@ int main(void)
 	uniformbuffer.specular_power = 8.0f;
 
 	float aspect = 1.0f * width / height;
-	uniformbuffer.proj.set_perspective(cPI * 0.5f, aspect, 1.0f, 500.0f);
+	uniformbuffer.proj.set_perspective(cPI * 0.5f, aspect, 0.1f, 500.0f);
 
 	sphere_model.load("mesh_sphere.obj");
 
-	update_light(light_angle);
+	update_light();
 	main_loop();
 
 	return 0;
