@@ -491,15 +491,21 @@ struct interp_vertex_t
 };
 
 template <typename T>
-T clamp(T x, T min, T max)
+T clamp(const T& x, const T& min, const T& max)
 {
 	return (x < min) ? min : ((x > max) ? max : x);
+}
+
+template <typename T>
+void clamp(T& x, T min, T max)
+{
+	x = (x < min) ? min : ((x > max) ? max : x);
 }
 
 uint8_t to_color_int(float c)
 {
 	int cint = (int)(c * 255.0f + 0.5);
-	cint = clamp(cint, 0, 255);
+	clamp(cint, 0, 255);
 	return (uint8_t)cint;
 }
 

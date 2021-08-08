@@ -116,7 +116,8 @@ float aces(float value)
 	float d = 0.59f;
 	float e = 0.14f;
 	value = (value * (a * value + b)) / (value * (c * value + d) + e);
-	return clamp(value, 0.0f, 1.0f);
+	clamp(value, 0.0f, 1.0f);
+	return value;
 }
 
 void reinhard_mapping(vector3_t& color)
@@ -145,11 +146,6 @@ void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	float NoL = dot(wnor, l);
 	NoL = max(NoL, 0.15f);
-
-	if (NoL >= 0.99f)
-	{
-		int kkk = 0;
-	}
 
 	vector3_t diffuse = albedo.to_vec3() * uniformbuffer.light_intensity * NoL;
 
@@ -186,10 +182,10 @@ float D_Trowbridge_Reitz_GGX(float a2, float NoH)
 
 // Tuned to match behavior of Vis_Smith
 // [Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"]
-float V_Schlick_GGX(float a2, float NoV, float NoL)
+float V_Schlick_GGX(float a, float NoV, float NoL)
 {
 	// V = G / (NoL * NoV)
-	float k = sqrt(a2) * 0.5f;
+	float k = a * 0.5f;
 	float Vis_SchlickV = NoV * (1.0f - k) + k;
 	float Vis_SchlickL = NoL * (1.0f - k) + k;
 	return 0.25f / (Vis_SchlickV * Vis_SchlickL);
@@ -197,7 +193,7 @@ float V_Schlick_GGX(float a2, float NoV, float NoL)
 
 // Smith term for GGX
 // [Smith 1967, "Geometrical shadowing of a random rough surface"]
-float V_smith_GGX(float a2, float NoV, float NoL)
+float V_Smith_GGX(float a2, float NoV, float NoL)
 {
 	// V = G / (NoL * NoV)
 	float Vis_SmithV = NoV + sqrt(NoV * (NoV - NoV * a2) + a2);
@@ -235,11 +231,6 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	float NoV = max(dot(wnor, v), 0);
 	float HoV = max(dot(h, v), 0);
 
-	if (NoL >= 0.99f)
-	{
-		int kkk = 0;
-	}
-
 	float metallic = metallic_texel.r;
 	float roughness = roughness_texel.r;
 	float a = roughness * roughness;
@@ -252,21 +243,23 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	float D = D_Trowbridge_Reitz_GGX(a2, NoH);
 
-	float V = V_Schlick_GGX(a2, NoV, NoL);
+	float V = V_Schlick_GGX(a, NoV, NoL);
 
 	vector3_t cook_torrance_brdf = F * D * V;
 
+	//kd和ks分别是漫反射和镜面反射系数，表征了入射能量在镜面反射和漫反射之间进行分配，以满足能量守恒定律。 因此kd + ks < 1
+	//F代表了材质表面反射率，那么我们可以直接让ks = F，然后令kd = (1-ks)*(1-metalness)。这实际上是将入射能量在镜面反射和漫反射之间进行了分配，以满足能量守恒定律
 	vector3_t ks = F;
-	vector3_t kd = (cOne - F) * (1.0f - metallic);
+	vector3_t kd = (cOne - F);// *(1.0f - metallic);  // ?
 
-	vector3_t I = uniformbuffer.light_intensity * NoL;
+	vector3_t directIrradiance = uniformbuffer.light_intensity * NoL;
 
 	vector3_t diffuse_brdf = albedo / cPI;
 
-	vector3_t final_color = ( diffuse_brdf) * I;
+	vector3_t final_color = kd * diffuse_brdf * directIrradiance;
 
 	if (has_spec) {
-		final_color += ks * cook_torrance_brdf * I;
+		final_color += ks * cook_torrance_brdf * directIrradiance;
 	}
 
 	reinhard_mapping(final_color);
@@ -304,7 +297,7 @@ void scan_horizontal(const interp_vertex_t& vl, const interp_vertex_t& vr, int y
 	for (int i = left; i < right; ++i)
 	{
 		float w = (i - vl.pos.x) / dist;
-		w = clamp(w, 0.0f, 1.0f);
+		clamp(w, 0.0f, 1.0f);
 		interp_vertex_t p = lerp(vl, vr, w);
 		if (depth_test(i, y, p.pos.z))
 		{
@@ -334,7 +327,7 @@ void scan_triangle(scan_tri_t *sctri)
 	{
 		float cury = i + 0.0f;
 		float w = (ydist > 0 ? cury - ymin : cury - ymax) / ydist;
-		w = clamp(w, 0.0f, 1.0f);
+		clamp(w, 0.0f, 1.0f);
 		interp_vertex_t vl = lerp(sctri->l, sctri->p, w);
 		interp_vertex_t vr = lerp(sctri->r, sctri->p, w);
 		scan_horizontal(vl, vr, i);
@@ -501,6 +494,8 @@ void draw_cartesian_coordinate(const matrix_t& mvp)
 		tp.z *= revw;
 		tp.w = revw;
 		to_screen_coord(&tp);
+		clamp(tp.x, 0.0f, (width - 1) * 1.0f);
+		clamp(tp.y, 0.0f, (height - 1) * 1.0f);
 		return tp;
 	};
 
@@ -654,9 +649,11 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			break;
 		case VK_UP:
 			eyedist += 0.1f;
+			uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
 			break;
 		case VK_DOWN:
 			eyedist -= 0.1f;
+			uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
 			break;
 		case VK_LEFT:
 			update_light(light_angle + 0.1f);
