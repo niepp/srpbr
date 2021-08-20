@@ -236,6 +236,8 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	float a = roughness * roughness;
 	float a2 = a * a;
 
+	// F：菲涅尔系数，是光线发生反射与折射的比例，当光线垂直进入表面时的菲涅尔系数记为F0，F0是可以实际测量出来的
+	// 不同的材质，这个F0是不同的，F0越大，感觉是越明亮，金属材质通常F0比较大，渲染中通常取一个中间值(0.04, 0.04, 0.04)，再用一个权重系数（金属度）在这个中间常数值和自身漫反射颜色之间进行线性插值得到F0.
 	vector3_t temp(0.04f, 0.04f, 0.04f);
 	vector3_t f0 = lerp(temp, albedo, metallic);
 
@@ -248,42 +250,44 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	vector3_t cook_torrance_brdf = F * D * V;
 
 	//kd和ks分别是漫反射和镜面反射系数，表征了入射能量在镜面反射和漫反射之间进行分配，以满足能量守恒定律。 因此kd + ks < 1
-	//F代表了材质表面反射率，那么我们可以直接让ks = F，然后令kd = (1-ks)*(1-metalness)。这实际上是将入射能量在镜面反射和漫反射之间进行了分配，以满足能量守恒定律
+	//F代表了材质表面反射率，那么我们可以直接让ks = F，然后令kd = (1 - ks) * (1 - metalness)。这实际上是将入射能量在镜面反射和漫反射之间进行了分配，以满足能量守恒定律
 	vector3_t ks = F;
-	vector3_t kd = (cOne - F);// *(1.0f - metallic);  // ?
+	vector3_t kd = (cOne - F) * (1.0f - metallic);
 
 	vector3_t directIrradiance = uniformbuffer.light_intensity * NoL;
 
 	vector3_t diffuse_brdf = albedo / cPI;
 
-	vector3_t final_color = kd * diffuse_brdf * directIrradiance;
+	vector3_t brdf = kd * diffuse_brdf;
 
-	if (has_spec) {
-		final_color += ks * cook_torrance_brdf * directIrradiance;
-	}
+	if (has_spec)
+		brdf += cook_torrance_brdf;
 
-	reinhard_mapping(final_color);
+	vector3_t radiance = brdf * directIrradiance;
 
-	out_color = final_color;
+	reinhard_mapping(radiance);
+
+	out_color = radiance;
 
 }
 
 void pixel_process(int x, int y, const interp_vertex_t& p)
 {
 	vector4_t color;
-	if (shading_model == shading_model_t::cSM_Color)
+	switch (shading_model)
 	{
+	case shading_model_t::cSM_Color:
 		color = p.color / p.pos.w;
-	}
-	else if (shading_model == shading_model_t::cSM_Phong)
-	{
+		break;
+	case shading_model_t::cSM_Phong:
 		phong_shading(p, color);
-	}
-	else if (shading_model == shading_model_t::cSM_PBR)
-	{
+		break;
+	case shading_model_t::cSM_PBR:
 		pbr_shading(p, color);
+		break;
+	default:
+		break;
 	}
-
 	write_pixel(x, y, makefour(color));
 	write_depth(x, y, p.pos.z);
 }
@@ -337,7 +341,7 @@ void scan_triangle(scan_tri_t *sctri)
 
 bool check_clip(vector4_t* p, int width, int height)
 {
-	if (p->x < 0 || p->x >= height) return false;
+	if (p->x < 0 || p->x >= width) return false;
 	if (p->y < 0 || p->y >= height) return false;
 	if (p->z < 0.0f || p->z > 1.0f) return false;
 	return true;
@@ -613,7 +617,7 @@ void main_loop()
 				::wsprintfW(str, _T("srpbr %d fps"), frame_rate);
 				::SetWindowText(hwnd, str);
 			}
-			//update(&cube_model);
+
 			update(&sphere_model);
 
 			HDC hDC = GetDC(hwnd);

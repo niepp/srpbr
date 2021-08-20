@@ -18,7 +18,7 @@ struct texture2d_t
 		int components = 0;
 		stbi_uc* st_img = stbi_load(tex_path, &width, &height, &components, STBI_rgb_alpha);
 		if (st_img == nullptr) {
-			// if we haven't returned, it's because we failed to load the file.
+			// failed to load the file.
 			printf("Failed to load image %s\nReason: %s\n", tex_path, stbi_failure_reason());
 			return;
 		}
