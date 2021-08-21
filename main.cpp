@@ -750,10 +750,10 @@ int main(void)
 	zbuffer = new float[width * height];
 	memset(zbuffer, 0, width * height * sizeof(float));
 
-	albedo_tex.load_tex("./rustediron2_basecolor.png");
-	metallic_tex.load_tex("./rustediron2_metallic.png");
-	roughness_tex.load_tex("./rustediron2_roughness.png");
-	normal_tex.load_tex("./rustediron2_normal.png");
+	albedo_tex.load_tex("./resource/rustediron2_basecolor.png");
+	metallic_tex.load_tex("./resource/rustediron2_metallic.png");
+	roughness_tex.load_tex("./resource/rustediron2_roughness.png");
+	normal_tex.load_tex("./resource/rustediron2_normal.png");
 
 	uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
 	uniformbuffer.light_dir.set(0.0f, -1.0f, 0.0f);
@@ -763,7 +763,7 @@ int main(void)
 	float aspect = 1.0f * width / height;
 	uniformbuffer.proj.set_perspective(cPI * 0.5f, aspect, 0.1f, 500.0f);
 
-	sphere_model.load("mesh_sphere.obj");
+	sphere_model.load("./resource/mesh_sphere.obj");
 
 	update_light();
 	main_loop();
