@@ -501,6 +501,12 @@ void clamp(T& x, T min, T max)
 	x = (x < min) ? min : ((x > max) ? max : x);
 }
 
+template <typename T>
+bool appro_equal(T t, T c)
+{
+	return abs(t - c) < cEpslion;
+}
+
 uint8_t to_color_int(float c)
 {
 	int cint = (int)(c * 255.0f + 0.5);

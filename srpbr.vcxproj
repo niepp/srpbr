@@ -143,6 +143,7 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ibl.h" />
     <ClInclude Include="math3d.h" />
     <ClInclude Include="model.h" />
     <ClInclude Include="stb_image.h" />

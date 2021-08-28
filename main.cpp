@@ -6,6 +6,7 @@
 
 #include "math3d.h"
 #include "texture.h"
+#include "ibl.h"
 #include "model.h"
 
 const vector3_t cOne(1.0f, 1.0f, 1.0f);
@@ -68,6 +69,8 @@ texture2d_t albedo_tex;
 texture2d_t metallic_tex;
 texture2d_t roughness_tex;
 texture2d_t normal_tex;
+
+ibl_t ibl;
 
 shading_model_t shading_model = shading_model_t::cSM_PBR;
 
