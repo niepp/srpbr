@@ -753,6 +753,8 @@ int main(void)
 	zbuffer = new float[width * height];
 	memset(zbuffer, 0, width * height * sizeof(float));
 
+	ibl.load("./resource/");
+
 	albedo_tex.load_tex("./resource/rustediron2_basecolor.png");
 	metallic_tex.load_tex("./resource/rustediron2_metallic.png");
 	roughness_tex.load_tex("./resource/rustediron2_roughness.png");

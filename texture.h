@@ -61,6 +61,110 @@ vector4_t sample_bilinear_interpolation(unsigned int* texture, int width, int he
 	return lerp(tu0, tu1, v_weight);
 }
 
+/*
+
+		！！！！！！
+	   |  +z  |
+	   |face2 |
+ ！！！！！！ ！！！！！！ ！！！！！！ ！！！！！！
+|  -x  |  -y  |  +x  |  +y  |
+|face1 |face4 |face0 |face5 |
+ ！！！！！！ ！！！！！！ ！！！！！！ ！！！！！！
+	   |  -z  |
+	   |face3 |
+		！！！！！！
+
+		^z
+		|
+		|！！！！！！
+		|  +x  |
+		|face0 |
+		！！！！！！！！！！>y
+
+		^z
+		|
+		|！！！！！！
+		|  -x  |
+		|face1 |
+		！！！！！！！！！！>-y
+
+		^y
+		|
+		|！！！！！！
+		|  +z  |
+		|face2 |
+		！！！！！！！！！！>+x
+
+		^-y
+		|
+		|！！！！！！
+		|  -z  |
+		|face3 |
+		！！！！！！！！！！>+x
+
+		^z
+		|
+		|！！！！！！
+		|  -y  |
+		|face4 |
+		！！！！！！！！！！>+x
+
+		^z
+		|
+		|！！！！！！
+		|  +y  |
+		|face5 |
+		！！！！！！！！！！>-x
+
+*/
+int direction_to_cubeuv(const vector3_t& dir, texcoord_t& tc)
+{
+	int face_index = 0;
+	float absX = abs(dir.x);
+	float absY = abs(dir.y);
+	float absZ = abs(dir.z);
+	float ma;
+	if (absZ >= absX && absZ >= absY)
+	{
+		face_index = dir.z > 0.0f ? 2 : 3;
+		tc.set(dir.x, dir.z > 0.0f ? dir.y : -dir.y);
+		ma = absZ;
+	}
+	else if (absY >= absX)
+	{
+		face_index = dir.y > 0.0f ? 5 : 4;
+		tc.set(dir.y > 0.0f ? -dir.x : dir.x, dir.z);
+		ma = absY;
+	}
+	else
+	{
+		face_index = dir.x > 0.0f ? 0 : 1;
+		tc.set(dir.x > 0.0f ? dir.y : -dir.y, dir.z);
+		ma = absX;
+	}
+	tc.u = (tc.u / ma + 1.0f) * 0.5f;
+	tc.v = (tc.v / ma + 1.0f) * 0.5f;
+	return face_index;
+}
+
+void cube_uv_to_direction(int index, float u, float v, vector3_t& dir)
+{
+	// convert range [0, 1] to [-1, 1]
+	u = 2.0f * u - 1.0f;
+	v = 2.0f * v - 1.0f;
+	switch (index)
+	{
+	case 0: dir.set(1.0f, u, v); break;		// +X
+	case 1: dir.set(-1.0f, -u, v); break;	// -X
+	case 2: dir.set(u, v, 1.0f); break;		// +Z
+	case 3: dir.set(u, -v, -1.0f); break;	// -Z
+	case 4: dir.set(u, -1.0f, v); break;	// -Y
+	case 5: dir.set(-u, 1.0f, v); break;	// +Y
+	}
+	dir.normalize();
+}
+
+
 class texture2d_t
 {
 	unsigned int* texture;
@@ -69,6 +173,12 @@ public:
 	texture2d_t() :
 		texture(nullptr), width(0), height(0)
 	{ }
+
+	~texture2d_t()
+	{
+		delete texture;
+		texture = nullptr;
+	}
 
 	void load_tex(const char* tex_path)
 	{
@@ -86,44 +196,17 @@ class cube_texture_t
 {
 	texture2d_t surfaces[6];
 public:
-	void load_tex(const char* tex_path)
+	cube_texture_t()
 	{
-		const char* faces[6] = { "px", "nx", "py", "ny", "pz", "nz" };
-		for (int i = 0; i < 6; ++i) {
-			char paths[1024];
-			sprintf_s(paths, "%s/i_%s.png", tex_path, faces[i]);
-			surfaces[i].load_tex(paths);
-		}
 	}
 
-	int direction_to_cubeuv(const vector3_t& dir, texcoord_t& tc)
+	void load_tex(const std::string& tex_path, const std::string& ext_name)
 	{
-		int face_index = 0;
-		float absX = abs(dir.x);
-		float absY = abs(dir.y);
-		float absZ = abs(dir.z);
-		float ma;
-		if (absZ >= absX && absZ >= absY)
-		{
-			face_index = dir.z < 0.0f ? 5 : 4;
-			ma = 0.5f / absZ;
-			tc.set(dir.z < 0.0 ? -dir.x : dir.x, -dir.y);
+		const std::string faces[6] = { "px", "nx", "py", "ny", "pz", "nz" };
+		for (int i = 0; i < 6; ++i) {
+			std::string path = tex_path + "_" + faces[i] + ext_name;
+			surfaces[i].load_tex(path.c_str());
 		}
-		else if (absY >= absX)
-		{
-			face_index = dir.y < 0.0f ? 3 : 2;
-			ma = 0.5f / absY;
-			tc.set(dir.x, dir.y < 0.0 ? -dir.z : dir.z);
-		}
-		else
-		{
-			face_index = dir.x < 0.0f ? 1 : 0;
-			ma = 0.5f / absX;
-			tc.set(dir.x < 0.0 ? dir.z : -dir.z, -dir.y);
-		}
-		tc.u = tc.u * ma + 0.5f;
-		tc.v = tc.v * ma + 0.5f;
-		return face_index;
 	}
 
 	vector4_t sample(const vector3_t& dir)
