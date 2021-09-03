@@ -20,6 +20,7 @@ the coordinate system same to UE4: left-hand z-up
 const float cEpslion = 1e-6f;
 const float cPI = 3.1415926f;
 const float cRevt255 = 1.0f / 255.0f;
+const float cRevt65535 = 1.0f / 65535.0f;
 
 struct texcoord_t
 {
@@ -149,6 +150,11 @@ struct vector3_t
 		x *= inv;
 		y *= inv;
 		z *= inv;
+	}
+
+	static vector3_t one() {
+		static vector3_t cOne(1.0f, 1.0f, 1.0f);
+		return cOne;
 	}
 };
 
@@ -575,6 +581,45 @@ interp_vertex_t lerp( const interp_vertex_t& a, const interp_vertex_t& b, float 
 	p.nor = lerp(a.nor, b.nor, w);
 	p.uv = lerp(a.uv, b.uv, w);
 	p.color = lerp(a.color, b.color, w);
+	return p;
+}
+
+vector3_t minv(const vector3_t& a, const vector3_t& b)
+{
+	vector3_t p;
+	p.x = min(a.x, b.x);
+	p.y = min(a.y, b.y);
+	p.z = min(a.z, b.z);
+	return p;
+}
+
+vector3_t maxv(const vector3_t& a, const vector3_t& b)
+{
+	vector3_t p;
+	p.x = max(a.x, b.x);
+	p.y = max(a.y, b.y);
+	p.z = max(a.z, b.z);
+	return p;
+}
+
+
+vector4_t minv(const vector4_t& a, const vector4_t& b)
+{
+	vector4_t p;
+	p.x = min(a.x, b.x);
+	p.y = min(a.y, b.y);
+	p.z = min(a.z, b.z);
+	p.w = min(a.w, b.w);
+	return p;
+}
+
+vector4_t maxv(const vector4_t& a, const vector4_t& b)
+{
+	vector4_t p;
+	p.x = max(a.x, b.x);
+	p.y = max(a.y, b.y);
+	p.z = max(a.z, b.z);
+	p.w = max(a.w, b.w);
 	return p;
 }
 

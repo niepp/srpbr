@@ -1,10 +1,12 @@
 ﻿#include <windows.h>
 #include <tchar.h>
+#include <math.h>
 #include <vector>
 #include <iostream>
 #include <cassert>
 
 #include "math3d.h"
+#include "pbr_common.h"
 #include "texture.h"
 #include "ibl.h"
 #include "model.h"
@@ -29,14 +31,21 @@ struct scan_tri_t
 
 enum class shading_model_t
 {
-	cSM_Color = 0,
-	cSM_Wireframe,
-	cSM_Phong,
-	cSM_PBR,
-	cSM_MAX,
+	eSM_Color = 0,
+	eSM_Wireframe,
+	eSM_Phong,
+	eSM_PBR,
+	eSM_MAX,
+};
+
+enum class cull_mode_t {
+	eCM_None,
+	eCM_CW,
+	eCM_CCW,
 };
 
 bool has_spec = true;
+bool has_indirect_light = true;
 
 float reci_freq;
 int64_t tick_start;
@@ -70,9 +79,11 @@ texture2d_t metallic_tex;
 texture2d_t roughness_tex;
 texture2d_t normal_tex;
 
+pbr_param_t pbr_param;
 ibl_t ibl;
 
-shading_model_t shading_model = shading_model_t::cSM_PBR;
+shading_model_t shading_model = shading_model_t::eSM_PBR;
+cull_mode_t cull_mode = cull_mode_t::eCM_CW;
 
 model_t sphere_model;
 
@@ -168,42 +179,6 @@ void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 }
 
 
-//
-vector3_t F_fresenl_schlick(float HoV, const vector3_t& f0)
-{
-	float e = pow(1.0f - HoV, 5.0f);
-	return f0 + (cOne - f0) * e;
-}
-
-// GGX / Trowbridge-Reitz
-// [Walter et al. 2007, "Microfacet models for refraction through rough surfaces"]
-float D_Trowbridge_Reitz_GGX(float a2, float NoH)
-{
-	float d = NoH * NoH * (a2 - 1.0f) + 1.0f;
-	return a2 / (cPI * d * d);
-}
-
-// Tuned to match behavior of Vis_Smith
-// [Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"]
-float V_Schlick_GGX(float a, float NoV, float NoL)
-{
-	// V = G / (NoL * NoV)
-	float k = a * 0.5f;
-	float Vis_SchlickV = NoV * (1.0f - k) + k;
-	float Vis_SchlickL = NoL * (1.0f - k) + k;
-	return 0.25f / (Vis_SchlickV * Vis_SchlickL);
-}
-
-// Smith term for GGX
-// [Smith 1967, "Geometrical shadowing of a random rough surface"]
-float V_Smith_GGX(float a2, float NoV, float NoL)
-{
-	// V = G / (NoL * NoV)
-	float Vis_SmithV = NoV + sqrt(NoV * (NoV - NoV * a2) + a2);
-	float Vis_SmithL = NoL + sqrt(NoL * (NoL - NoL * a2) + a2);
-	float m = Vis_SmithV * Vis_SmithL;
-	return m != 0 ? 1.0f / m : FLT_MAX;
-}
 
 void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 {
@@ -211,8 +186,8 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	uv.u /= p.pos.w;
 	uv.v /= p.pos.w;
 
-	vector3_t wnor = p.nor / p.pos.w;
-	wnor.normalize();
+	pbr_param.n = p.nor / p.pos.w;
+	pbr_param.n.normalize();
 
 	vector3_t wpos = p.wpos / p.pos.w;
 
@@ -220,44 +195,45 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	vector4_t metallic_texel = metallic_tex.sample(uv);
 	vector4_t roughness_texel = roughness_tex.sample(uv);
 
-	vector3_t v = uniformbuffer.eye - wpos;
-	v.normalize();
+	pbr_param.v = uniformbuffer.eye - wpos;
+	pbr_param.v.normalize();
 
-	vector3_t l = -uniformbuffer.light_dir;
+	pbr_param.l = -uniformbuffer.light_dir;
 
 	// (v + l) / 2
-	vector3_t h = v + l;
-	h.normalize();
+	pbr_param.h = pbr_param.v + pbr_param.l;
+	pbr_param.h.normalize();
 
-	float NoL = max(dot(wnor, l), 0);
-	float NoH = max(dot(wnor, h), 0);
-	float NoV = max(dot(wnor, v), 0);
-	float HoV = max(dot(h, v), 0);
+	pbr_param.NoL = max(dot(pbr_param.n, pbr_param.l), 0);
+	pbr_param.NoH = max(dot(pbr_param.n, pbr_param.h), 0);
+	pbr_param.NoV = max(dot(pbr_param.n, pbr_param.v), 0);
+	pbr_param.HoV = max(dot(pbr_param.h, pbr_param.v), 0);
 
-	float metallic = metallic_texel.r;
-	float roughness = roughness_texel.r;
-	float a = roughness * roughness;
+	pbr_param.metallic = metallic_texel.r;
+	pbr_param.roughness = roughness_texel.r;
+	float a = pbr_param.roughness * pbr_param.roughness;
 	float a2 = a * a;
 
 	// F：菲涅尔系数，是光线发生反射与折射的比例，当光线垂直进入表面时的菲涅尔系数记为F0，F0是可以实际测量出来的
-	// 不同的材质，这个F0是不同的，F0越大，感觉是越明亮，金属材质通常F0比较大，渲染中通常取一个中间值(0.04, 0.04, 0.04)，再用一个权重系数（金属度）在这个中间常数值和自身漫反射颜色之间进行线性插值得到F0.
+	// 不同的材质，这个F0是不同的，F0越大，感觉是越明亮，金属材质通常F0比较大，而且是有颜色的（不同频率的光，对应菲涅尔系数不同），非金属材质最低也有一点点反射，就取(0.04, 0.04, 0.04)，
+	// 渲染中通常用一个权重系数（金属度）在非金属材质的最小菲涅尔系数和具有最强金属性的材质菲涅尔系数（自身漫反射颜色）之间进行线性插值得到F0.
 	vector3_t temp(0.04f, 0.04f, 0.04f);
-	vector3_t f0 = lerp(temp, albedo, metallic);
+	pbr_param.f0 = lerp(temp, albedo, pbr_param.metallic);
 
-	vector3_t F = F_fresenl_schlick(HoV, f0);
+	vector3_t F = F_fresenl_schlick(pbr_param.HoV, pbr_param.f0);
 
-	float D = D_Trowbridge_Reitz_GGX(a2, NoH);
+	float D = D_Trowbridge_Reitz_GGX(a2, pbr_param.NoH);
 
-	float V = V_Schlick_GGX(a, NoV, NoL);
+	float V = V_Schlick_GGX(a, pbr_param.NoV, pbr_param.NoL);
 
 	vector3_t cook_torrance_brdf = F * D * V;
 
 	//kd和ks分别是漫反射和镜面反射系数，表征了入射能量在镜面反射和漫反射之间进行分配，以满足能量守恒定律。 因此kd + ks < 1
 	//F代表了材质表面反射率，那么我们可以直接让ks = F，然后令kd = (1 - ks) * (1 - metalness)。这实际上是将入射能量在镜面反射和漫反射之间进行了分配，以满足能量守恒定律
 	vector3_t ks = F;
-	vector3_t kd = (cOne - F) * (1.0f - metallic);
+	vector3_t kd = (cOne - F) * (1.0f - pbr_param.metallic);
 
-	vector3_t directIrradiance = uniformbuffer.light_intensity * NoL;
+	vector3_t directIrradiance = uniformbuffer.light_intensity * pbr_param.NoL;
 
 	vector3_t diffuse_brdf = albedo / cPI;
 
@@ -267,6 +243,11 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 		brdf += cook_torrance_brdf;
 
 	vector3_t radiance = brdf * directIrradiance;
+
+	vector3_t indirect_diffuse = ibl.calc_lighting(pbr_param, albedo);
+
+	if (has_indirect_light)
+		radiance += indirect_diffuse;
 
 	reinhard_mapping(radiance);
 
@@ -279,13 +260,13 @@ void pixel_process(int x, int y, const interp_vertex_t& p)
 	vector4_t color;
 	switch (shading_model)
 	{
-	case shading_model_t::cSM_Color:
+	case shading_model_t::eSM_Color:
 		color = p.color / p.pos.w;
 		break;
-	case shading_model_t::cSM_Phong:
+	case shading_model_t::eSM_Phong:
 		phong_shading(p, color);
 		break;
-	case shading_model_t::cSM_PBR:
+	case shading_model_t::eSM_PBR:
 		pbr_shading(p, color);
 		break;
 	default:
@@ -557,8 +538,11 @@ void update(model_t *model)
 		vector4_t v02 = vb_post[i2].pos - vb_post[i0].pos;
 
 		float det_xy = v01.x * v02.y - v01.y * v02.x;
-		if (det_xy >= 0.0f) {
+		if (cull_mode == cull_mode_t::eCM_CW && det_xy >= 0.0f) {
 			continue; // backface culling
+		}
+		else if (cull_mode == cull_mode_t::eCM_CCW && det_xy < 0.0f) {
+			continue; // forward face culling
 		}
 
 		interp_vertex_t* p0 = &vb_post[i0];
@@ -574,7 +558,7 @@ void update(model_t *model)
 		if (p0->pos.y > p2->pos.y) std::swap(p0, p2);
 		if (p1->pos.y > p2->pos.y) std::swap(p1, p2);
 
-		if (shading_model == shading_model_t::cSM_Wireframe)
+		if (shading_model == shading_model_t::eSM_Wireframe)
 		{
 			draw_line(p0->pos, p1->pos, 0xffffffff);
 			draw_line(p1->pos, p2->pos, 0xffffffff);
@@ -652,12 +636,15 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		{
 		case 'C':
 			shading_model = (shading_model_t)((int)shading_model + 1);
-			if (shading_model == shading_model_t::cSM_MAX)
-				shading_model = shading_model_t::cSM_Color;
+			if (shading_model == shading_model_t::eSM_MAX)
+				shading_model = shading_model_t::eSM_Color;
 			std::cout << (int)shading_model << std::endl;
 			break;
 		case 'S':
 			has_spec = !has_spec;
+			break;
+		case 'I':
+			has_indirect_light = !has_indirect_light;
 			break;
 		case VK_UP:
 			light_angle.y += 0.1f;

@@ -146,6 +146,7 @@
     <ClInclude Include="ibl.h" />
     <ClInclude Include="math3d.h" />
     <ClInclude Include="model.h" />
+    <ClInclude Include="pbr_common.h" />
     <ClInclude Include="stb_image.h" />
     <ClInclude Include="texture.h" />
   </ItemGroup>

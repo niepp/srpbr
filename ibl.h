@@ -23,7 +23,12 @@ public:
 	virtual ~ibl_t() {
 		delete irradiance_map;
 		irradiance_map = nullptr;
-		
+
+		for (auto m : prefilter_maps) {
+			delete m;
+		}
+		prefilter_maps.clear();
+
 		delete brdf_lut;
 		brdf_lut = nullptr;
 	}
@@ -35,7 +40,9 @@ public:
 
 		for (int i = 0; i < 10; ++i) // todo
 		{
-			std::ostringstream stringStream("ibl_textures/prefilter_map_mip");
+			std::ostringstream stringStream;
+			stringStream << tex_path;
+			stringStream << "ibl_textures/prefilter_map_mip";
 			stringStream << i;
 			std::string copyOfStr = stringStream.str();
 
@@ -48,6 +55,15 @@ public:
 		std::string lut_path = tex_path + "brdf_lut.tga";
 		brdf_lut->load_tex(lut_path.c_str());
 
+	}
+
+	vector3_t calc_lighting(const pbr_param_t& pbr_param, const vector3_t& albedo)
+	{
+		vector3_t ks = F_fresenl_schlick_roughness(pbr_param.NoV, pbr_param.f0, pbr_param.roughness);
+		vector3_t kd = vector3_t::one() - ks;
+		vector3_t irradiance = irradiance_map->sample(pbr_param.n).to_vec3();
+		vector3_t diffuse = kd * irradiance * albedo;
+		return diffuse;
 	}
 
 };
