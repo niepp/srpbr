@@ -301,6 +301,11 @@ struct vector4_t
 		return vector3_t(x, y, z);
 	}
 
+	static vector4_t one() {
+		static vector4_t cOne(1.0f, 1.0f, 1.0f, 1.0f);
+		return cOne;
+	}
+
 };
 
 inline float dot(const vector3_t& a, const vector3_t& b)

@@ -102,6 +102,8 @@ void write_pixel(int x, int y, uint32_t color)
 
 void write_depth(int x, int y, float z)
 {
+	// zbuffer store the reverse-z value
+	// https://developer.nvidia.com/content/depth-precision-visualized
 	assert(x >= 0 && x < width);
 	assert(y >= 0 && y < height);
 	zbuffer[(height - y - 1) * width + x] = z;
@@ -112,7 +114,7 @@ bool depth_test(int x, int y, float z)
 	assert(x >= 0 && x < width);
 	assert(y >= 0 && y < height);
 	float nowz = zbuffer[(height - y - 1) * width + x];
-	return z >= nowz;
+	return z < nowz;
 }
 
 float gamma(float linear_color)
@@ -177,7 +179,6 @@ void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 	out_color = diffuse + (has_spec ? specular : vector3_t());
 
 }
-
 
 
 void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
@@ -268,6 +269,7 @@ void pixel_process(int x, int y, const interp_vertex_t& p)
 		break;
 	case shading_model_t::eSM_PBR:
 		pbr_shading(p, color);
+		//color = vector4_t::one() / p.pos.w;
 		break;
 	default:
 		break;
@@ -287,8 +289,7 @@ void scan_horizontal(const interp_vertex_t& vl, const interp_vertex_t& vr, int y
 		float w = (i - vl.pos.x) / dist;
 		clamp(w, 0.0f, 1.0f);
 		interp_vertex_t p = lerp(vl, vr, w);
-		if (depth_test(i, y, p.pos.z))
-		{
+		if (depth_test(i, y, p.pos.z)) {
 			pixel_process(i, y, p);
 		}
 	}
@@ -497,27 +498,8 @@ void draw_cartesian_coordinate(const matrix_t& mvp)
 	draw_line(to, tz, 0xff0000ff);
 }
 
-void update(model_t *model)
+void render_model(model_t *model)
 {
-	memset(framebuffer, 0, width * height * sizeof(uint32_t));
-	memset(zbuffer, 0, width * height * sizeof(float));
-
-	//angle_speed += 0.008f;
-	matrix_t mscale, mrot;
-	mscale.set_scale(1.6f, 1.6f, 1.6f);
-	mrot.set_rotate(0, 0, 1, angle_speed);
-	uniformbuffer.world = mul(mscale, mrot);
-	uniformbuffer.world.set_translate(0, 0, -0.8f);
-
-	vector3_t at(0.0f, 0.0f, 0.0f);
-	vector3_t up(0.0f, 0.0f, 1.0f);
-	uniformbuffer.view.set_lookat(uniformbuffer.eye, at, up);
-
-	matrix_t vp = mul(uniformbuffer.view, uniformbuffer.proj);
-	uniformbuffer.mvp = mul(uniformbuffer.world, vp);
-
-	draw_cartesian_coordinate(vp);
-
 	model_vertex_vec_t& vb = model->m_model_vertex;
 	interp_vertex_vec_t& vb_post = model->m_vertex_post;
 	index_vec_t& ib = model->m_model_indices;
@@ -572,6 +554,37 @@ void update(model_t *model)
 
 }
 
+void render_scene()
+{
+	memset(framebuffer, 0, width * height * sizeof(uint32_t));
+	for (int i = 0; i < width * height; ++i) {
+		zbuffer[i] = FLT_MAX;
+	}
+
+	uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
+	vector3_t at(0.0f, 0.0f, 0.0f);
+	vector3_t up(0.0f, 0.0f, 1.0f);
+	uniformbuffer.view.set_lookat(uniformbuffer.eye, at, up);
+	matrix_t vp = mul(uniformbuffer.view, uniformbuffer.proj);
+	draw_cartesian_coordinate(vp);
+
+	//angle_speed += 0.008f;
+	matrix_t mscale, mrot;
+	mscale.set_scale(1.6f, 1.6f, 1.6f);
+	mrot.set_rotate(0, 0, 1, angle_speed);
+	uniformbuffer.world = mul(mscale, mrot);
+	uniformbuffer.world.set_translate(0, 0, -0.8f);
+	uniformbuffer.mvp = mul(uniformbuffer.world, vp);
+
+	render_model(&sphere_model);
+
+	uniformbuffer.world = mul(mscale, mrot);
+	uniformbuffer.world.set_translate(0.6f, 0, -0.8f);
+	uniformbuffer.mvp = mul(uniformbuffer.world, vp);
+
+	render_model(&sphere_model);
+
+}
 
 void main_loop()
 {
@@ -605,7 +618,7 @@ void main_loop()
 				::SetWindowText(hwnd, str);
 			}
 
-			update(&sphere_model);
+			render_scene();
 
 			HDC hDC = GetDC(hwnd);
 			BitBlt(hDC, 0, 0, width, height, screenDC, 0, 0, SRCCOPY);
@@ -661,6 +674,12 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		case VK_RIGHT:
 			light_angle.x += 0.1f;
 			update_light();
+			break;
+		case VK_PRIOR:
+			eyedist -= 0.1f;
+			break;
+		case VK_NEXT:
+			eyedist += 0.1f;
 			break;
 		default:
 			break;
@@ -738,7 +757,9 @@ int main(void)
 	::QueryPerformanceCounter((LARGE_INTEGER*)&tick_start);
 
 	zbuffer = new float[width * height];
-	memset(zbuffer, 0, width * height * sizeof(float));
+	for (int i = 0; i < width * height; ++i) {
+		zbuffer[i] = FLT_MAX;
+	}
 
 	ibl.load("./resource/");
 
