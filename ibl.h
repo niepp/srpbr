@@ -63,7 +63,34 @@ public:
 		vector3_t kd = vector3_t::one() - ks;
 		vector3_t irradiance = irradiance_map->sample(pbr_param.n).to_vec3();
 		vector3_t diffuse = kd * irradiance * albedo;
-		return diffuse;
+
+		//
+		vector3_t r = reflect(pbr_param.n, pbr_param.v);
+		r.normalize();
+		vector3_t prefiltered_part = sample_mipmap_linear(r, pbr_param.roughness);
+
+		texcoord_t lut_uv(pbr_param.NoV, pbr_param.roughness);
+		vector3_t envBRDF = brdf_lut->sample(lut_uv).to_vec3();
+		vector3_t specular = prefiltered_part * (pbr_param.f0 * envBRDF.x + vector3_t::one() * envBRDF.y);
+
+		return kd * irradiance * albedo + ks * specular;
+	}
+
+private:
+	vector3_t sample_mipmap_linear(const vector3_t& r, float roughness)
+	{
+		assert(prefilter_maps.size() > 1);
+		assert(roughness >= 0.0f && roughness <= 1.0f);
+
+		int max_level = (int)(prefilter_maps.size() - 1);
+		float lod = roughness * max_level;
+		int miplevel0 = (int)lod;
+		int miplevel1 = min(miplevel0 + 1, max_level);
+		float mip_weight = lod - miplevel0;
+
+		vector3_t prefiltered_part0 = prefilter_maps[miplevel0]->sample(r).to_vec3();
+		vector3_t prefiltered_part1 = prefilter_maps[miplevel1]->sample(r).to_vec3();
+		return lerp(prefiltered_part0, prefiltered_part1, mip_weight);
 	}
 
 };

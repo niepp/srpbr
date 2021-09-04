@@ -607,7 +607,6 @@ vector3_t maxv(const vector3_t& a, const vector3_t& b)
 	return p;
 }
 
-
 vector4_t minv(const vector4_t& a, const vector4_t& b)
 {
 	vector4_t p;
@@ -628,4 +627,9 @@ vector4_t maxv(const vector4_t& a, const vector4_t& b)
 	return p;
 }
 
+vector3_t reflect(const vector3_t& n, const vector3_t& l)
+{
+	vector3_t r = n * 2.0f * dot(n, l) - l;
+	return r;
+}
 #endif //__MATH3D_H__
