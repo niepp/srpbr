@@ -101,8 +101,9 @@ cube_texture_t* calc_irradiance_map(const cube_texture_t *src_cube_tex)
 				up = cross(n, right);
 
 				vector4_t irradiance(0, 0, 0, 0);
-				float sample_step = 0.125f;
 				int sample_num = 0;
+
+				float sample_step = 0.125f;
 				for (float phi = 0.0f; phi < 2.0f * cPI; phi += sample_step)
 				{
 					for (float theta = 0.0f; theta < 0.5f * cPI; theta += sample_step)
@@ -114,11 +115,17 @@ cube_texture_t* calc_irradiance_map(const cube_texture_t *src_cube_tex)
 						sample_dir.normalize();
 						vector4_t color = src_cube_tex->sample(sample_dir);
 
-						irradiance += color * sin(theta) * cos(theta);
+						float n_dot_l = max(dot(sample_dir, n), 0);
+						irradiance += color * n_dot_l;
 						++sample_num;
 					}
 				}
-				irradiance = irradiance * (cPI / sample_num);
+
+				
+				irradiance = irradiance / sample_num;
+				//irradiance = src_cube_tex->sample(n);
+				//std::swap(irradiance.r, irradiance.b);
+			//	irradiance.set(1, 0, 0, 1);
 				face.write_at(j, i, irradiance);
 			}
 		}

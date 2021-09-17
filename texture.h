@@ -40,9 +40,9 @@ vector4_t* load_tex_impl(const char* tex_path, int& width, int& height, bool ver
 			int src_idx = i * width + j;
 			int dst_idx = (vertical_flip ? height - 1 - i : i) * width + j;
 			vector4_t c;
-			c.b = st_img[src_idx * 4 + 0] * cRevt65535;
+			c.r = st_img[src_idx * 4 + 0] * cRevt65535;
 			c.g = st_img[src_idx * 4 + 1] * cRevt65535;
-			c.r = st_img[src_idx * 4 + 2] * cRevt65535;
+			c.b = st_img[src_idx * 4 + 2] * cRevt65535;
 			c.a = st_img[src_idx * 4 + 3] * cRevt65535;
 			texture[dst_idx] = c;
 		}
@@ -222,18 +222,19 @@ public:
 		}
 	}
 
-	void load_tex(const char* tex_path)
+	void load_tex(const char* tex_path, bool vertical_flip = true)
 	{
-		texture = load_tex_impl(tex_path, width, height);
+		texture = load_tex_impl(tex_path, width, height, vertical_flip);
 	}
 
-	void save_tex(const char* tex_path)
+	void save_tex(const char* tex_path, bool vertical_flip = true)
 	{
 		unsigned int* data = new unsigned int[width * height];
 		for (int i = 0; i < height; ++i) {
 			for (int j = 0; j < width; ++j) {
-				int idx = i * width + j;
-				data[idx] = makefour(texture[idx]);
+				int src_idx = i * width + j;
+				int dst_idx = (vertical_flip ? height - 1 - i : i) * width + j;
+				data[dst_idx] = makefour(texture[src_idx]);
 			}
 		}
 		save_tex_impl(tex_path, width, height, data);
@@ -270,7 +271,8 @@ public:
 		}
 	}
 
-	int size() const {
+	int size() const
+	{
 		return faces[0].tex_width();
 	}
 
