@@ -22,6 +22,55 @@ const float cPI = 3.1415926f;
 const float cRevt255 = 1.0f / 255.0f;
 const float cRevt65535 = 1.0f / 65535.0f;
 
+
+inline bool is_valid(float f)
+{
+	return f == f;
+}
+
+inline float fast_inv_sqrt(float x)
+{
+	float y = x;
+	float x2 = x * 0.5f;
+	int i = *(int*)&y;  // evil floating point bit level hacking
+	i = 0x5f3759df - (i >> 1); // what the fuck?
+	y = *(float*)&i;
+	y = y * (1.5f - (x2 * y * y)); // 1st iteration
+	// y = y * (1.5f - (x2 * y * y)); // 2nd iteration, this can be removed
+	return y;
+}
+
+inline double fast_inv_sqrt(double x)
+{
+	double y = x;
+	double x2 = y * 0.5;
+	int64_t i = *(int64_t*)&y;
+	// The magic number is for doubles is from https://cs.uwaterloo.ca/~m32rober/rsqrt.pdf
+	i = 0x5fe6eb50c7b537a9 - (i >> 1);
+	y = *(double*)&i;
+	y = y * (1.5 - (x2 * y * y));   // 1st iteration
+	// y  = y * ( 1.5 - ( x2 * y * y ) ); // 2nd iteration, this can be removed
+	return y;
+}
+
+inline float fast_exp(float x)
+{
+	int a = 185 * (int)x + 16249;
+	a <<= 16;
+	float f = *(reinterpret_cast<float*>(&a));
+	return f;
+}
+
+inline double fast_exp(double x)
+{
+	double d;
+	*(reinterpret_cast<int*>(&d) + 0) = 0;
+	*(reinterpret_cast<int*>(&d) + 1) = static_cast<int>(1512775 * x + 1072632447);
+	return d;
+}
+
+
+
 struct texcoord_t
 {
 	float u, v;
@@ -632,4 +681,6 @@ vector3_t reflect(const vector3_t& n, const vector3_t& l)
 	vector3_t r = n * 2.0f * dot(n, l) - l;
 	return r;
 }
+
+
 #endif //__MATH3D_H__

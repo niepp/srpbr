@@ -1,4 +1,5 @@
-﻿#include <windows.h>
+﻿#define _CRT_SECURE_NO_WARNINGS
+#include <windows.h>
 #include <tchar.h>
 #include <math.h>
 #include <vector>
@@ -10,6 +11,8 @@
 #include "texture.h"
 #include "ibl.h"
 #include "model.h"
+
+#include "pre_compute.h"
 
 const vector3_t cOne(1.0f, 1.0f, 1.0f);
 
@@ -35,6 +38,7 @@ enum class shading_model_t
 	eSM_Wireframe,
 	eSM_Phong,
 	eSM_PBR,
+	eSM_Skybox,
 	eSM_MAX,
 };
 
@@ -46,6 +50,8 @@ enum class cull_mode_t {
 
 bool has_spec = true;
 bool has_indirect_light = true;
+
+float float_control_roughness = 1.0f;
 
 float reci_freq;
 int64_t tick_start;
@@ -86,6 +92,8 @@ shading_model_t shading_model = shading_model_t::eSM_PBR;
 cull_mode_t cull_mode = cull_mode_t::eCM_CW;
 
 model_t sphere_model;
+
+cube_texture_t env_map; // environment map
 
 template <typename T, int n>
 int array_size(T(&)[n])
@@ -212,6 +220,9 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	pbr_param.metallic = metallic_texel.r;
 	pbr_param.roughness = roughness_texel.r;
+
+	pbr_param.roughness *= float_control_roughness;
+
 	float a = pbr_param.roughness * pbr_param.roughness;
 	float a2 = a * a;
 
@@ -226,6 +237,11 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	float D = D_Trowbridge_Reitz_GGX(a2, pbr_param.NoH);
 
 	float V = V_Schlick_GGX(a, pbr_param.NoV, pbr_param.NoL);
+
+	if (V != V)
+	{
+		int kkk = 0;
+	}
 
 	vector3_t cook_torrance_brdf = F * D * V;
 
@@ -245,10 +261,12 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	vector3_t radiance = brdf * directIrradiance;
 
-	vector3_t indirect_diffuse = ibl.calc_lighting(pbr_param, albedo);
+	vector3_t indirect_radiance = ibl.calc_lighting(pbr_param, albedo);
 
 	if (has_indirect_light)
-		radiance += indirect_diffuse;
+		radiance += indirect_radiance;
+
+
 
 	reinhard_mapping(radiance);
 
@@ -271,6 +289,18 @@ void pixel_process(int x, int y, const interp_vertex_t& p)
 		pbr_shading(p, color);
 		//color = vector4_t::one() / p.pos.w;
 		break;
+	case shading_model_t::eSM_Skybox:
+		{
+			
+			vector3_t n = p.nor / p.pos.w;
+			n.normalize();
+			
+			//if (n.x > 0 && n.z > 0)
+			{
+				color = env_map.sample(n);
+			}
+		}
+		break;
 	default:
 		break;
 	}
@@ -284,11 +314,24 @@ void scan_horizontal(const interp_vertex_t& vl, const interp_vertex_t& vr, int y
 	// left要往小取整，right要往大取整，避免三角形之间的接缝空隙！
 	int left = (int)(vl.pos.x);
 	int right = (int)(vr.pos.x + 0.5f);
+	clamp(left, 0, width - 1);
+	clamp(right, 0, width - 1);
 	for (int i = left; i < right; ++i)
 	{
 		float w = (i - vl.pos.x) / dist;
 		clamp(w, 0.0f, 1.0f);
 		interp_vertex_t p = lerp(vl, vr, w);
+
+		if (p.pos.w < -0.1)
+		{
+			int kkk = 0;
+		}
+
+		if (abs(p.pos.w) < cEpslion)
+		{
+			p.pos.w = 1.0f;
+		}
+
 		if (depth_test(i, y, p.pos.z)) {
 			pixel_process(i, y, p);
 		}
@@ -297,8 +340,7 @@ void scan_horizontal(const interp_vertex_t& vl, const interp_vertex_t& vr, int y
 
 void scan_triangle(scan_tri_t *sctri)
 {
-	if (sctri->l.pos.x > sctri->r.pos.x)
-	{
+	if (sctri->l.pos.x > sctri->r.pos.x) {
 		std::swap(sctri->l, sctri->r);
 	}
 
@@ -312,6 +354,9 @@ void scan_triangle(scan_tri_t *sctri)
 	// bottom要往小取整，top要往大取整，避免三角形之间的接缝空隙！
 	int bottom = (int)(ymin);
 	int top = (int)(ymax + 0.5f);
+	clamp(bottom, 0, height - 1);
+	clamp(top, 0, height - 1);
+
 	for (int i = bottom; i < top; ++i)
 	{
 		float cury = i + 0.0f;
@@ -531,9 +576,9 @@ void render_model(model_t *model)
 		interp_vertex_t* p1 = &vb_post[i1];
 		interp_vertex_t* p2 = &vb_post[i2];
 
-		if (!check_clip(&p0->pos, width, height)) return;
-		if (!check_clip(&p1->pos, width, height)) return;
-		if (!check_clip(&p2->pos, width, height)) return;
+		//if (!check_clip(&p0->pos, width, height)) return;
+		//if (!check_clip(&p1->pos, width, height)) return;
+		//if (!check_clip(&p2->pos, width, height)) return;
 
 		// make sure p0y <= p1y <= p2y
 		if (p0->pos.y > p1->pos.y) std::swap(p0, p1);
@@ -561,28 +606,45 @@ void render_scene()
 		zbuffer[i] = FLT_MAX;
 	}
 
+	angle_speed += 0.05f;
+
+	matrix_t mrot;
+	mrot.set_rotate(0, 0, 1, angle_speed);
+
 	uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
+	uniformbuffer.eye = mrot * uniformbuffer.eye;
+
 	vector3_t at(0.0f, 0.0f, 0.0f);
 	vector3_t up(0.0f, 0.0f, 1.0f);
 	uniformbuffer.view.set_lookat(uniformbuffer.eye, at, up);
 	matrix_t vp = mul(uniformbuffer.view, uniformbuffer.proj);
 	draw_cartesian_coordinate(vp);
 
-	//angle_speed += 0.008f;
-	matrix_t mscale, mrot;
+	matrix_t mscale;
+	mscale.set_scale(1000.0f, 1000.0f, 1000.0f);
+	uniformbuffer.world = mscale;
+	uniformbuffer.world.set_translate(0, 0, -500.0f);
+	uniformbuffer.mvp = mul(uniformbuffer.world, vp);
+	cull_mode = cull_mode_t::eCM_CCW;
+	shading_model = shading_model_t::eSM_Skybox;
+	render_model(&sphere_model);
+
+
+	angle_speed += 0.008f;
 	mscale.set_scale(1.6f, 1.6f, 1.6f);
-	mrot.set_rotate(0, 0, 1, angle_speed);
 	uniformbuffer.world = mul(mscale, mrot);
 	uniformbuffer.world.set_translate(0, 0, -0.8f);
 	uniformbuffer.mvp = mul(uniformbuffer.world, vp);
-
+	cull_mode = cull_mode_t::eCM_CW;
+	shading_model = shading_model_t::eSM_PBR;
 	render_model(&sphere_model);
 
-	uniformbuffer.world = mul(mscale, mrot);
-	uniformbuffer.world.set_translate(0.6f, 0, -0.8f);
-	uniformbuffer.mvp = mul(uniformbuffer.world, vp);
 
-	render_model(&sphere_model);
+	//uniformbuffer.world = mul(mscale, mrot);
+	//uniformbuffer.world.set_translate(0.6f, 0, -0.8f);
+	//uniformbuffer.mvp = mul(uniformbuffer.world, vp);
+
+	//render_model(&sphere_model);
 
 }
 
@@ -681,6 +743,16 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		case VK_NEXT:
 			eyedist += 0.1f;
 			break;
+
+		case 'R':
+			float_control_roughness += 0.02f;
+			clamp(float_control_roughness, 0.0f, 1.0f);
+			break;
+		case 'T':
+			float_control_roughness -= 0.02f;
+			clamp(float_control_roughness, 0.0f, 1.0f);
+			break;
+
 		default:
 			break;
 		}
@@ -734,6 +806,12 @@ HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
 
 int main(void)
 {
+
+	generate_irradiance_map("./resource/ibl/env", "./resource/ibl/irradiance");
+
+	return 0;
+
+
 	width = 800;
 	height = 600;
 	hwnd = init_window(GetModuleHandle(NULL), _T(""), width, height);
@@ -760,6 +838,8 @@ int main(void)
 	for (int i = 0; i < width * height; ++i) {
 		zbuffer[i] = FLT_MAX;
 	}
+
+	env_map.load_tex("./resource/ibl/env", ".png");
 
 	ibl.load("./resource/");
 

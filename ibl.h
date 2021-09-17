@@ -11,7 +11,7 @@ class cube_texture_t;
 class ibl_t
 {
 	cube_texture_t *irradiance_map; // diffuse environment map
-	std::vector<cube_texture_t*> prefilter_maps; // specular environment maps
+	std::vector<cube_texture_t*> prefilter_maps; // specular environment mipmaps
 	texture2d_t *brdf_lut;			// brdf lookup texture
 public:
 
@@ -67,17 +67,19 @@ public:
 		//
 		vector3_t r = reflect(pbr_param.n, pbr_param.v);
 		r.normalize();
-		vector3_t prefiltered_part = sample_mipmap_linear(r, pbr_param.roughness);
+		vector3_t prefiltered_part = sample_trilinear(r, pbr_param.roughness);
 
 		texcoord_t lut_uv(pbr_param.NoV, pbr_param.roughness);
+
 		vector3_t envBRDF = brdf_lut->sample(lut_uv).to_vec3();
+
 		vector3_t specular = prefiltered_part * (pbr_param.f0 * envBRDF.x + vector3_t::one() * envBRDF.y);
 
 		return kd * irradiance * albedo + ks * specular;
 	}
 
 private:
-	vector3_t sample_mipmap_linear(const vector3_t& r, float roughness)
+	vector3_t sample_trilinear(const vector3_t& r, float roughness)
 	{
 		assert(prefilter_maps.size() > 1);
 		assert(roughness >= 0.0f && roughness <= 1.0f);

@@ -4,6 +4,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 /* standard conversion from rgbe to float pixels */
 /* note: Ward uses ldexp(rgb, e-(128+8)) */
@@ -20,7 +22,7 @@ void rgbe2float(float& red, float& green, float& blue, unsigned char rgbe[4])
 	}
 }
 
-vector4_t* load_tex_impl(const char* tex_path, int& width, int& height)
+vector4_t* load_tex_impl(const char* tex_path, int& width, int& height, bool vertical_flip = true)
 {
 	int components = 0;
 	stbi_us* st_img = stbi_load_16(tex_path, &width, &height, &components, STBI_rgb_alpha);
@@ -35,20 +37,27 @@ vector4_t* load_tex_impl(const char* tex_path, int& width, int& height)
 	{
 		for (int j = 0; j < width; ++j)
 		{
-			int pidx = (height - 1 - i) * width + j;
+			int src_idx = i * width + j;
+			int dst_idx = (vertical_flip ? height - 1 - i : i) * width + j;
 			vector4_t c;
-			c.b = st_img[pidx * 4 + 0] * cRevt65535;
-			c.g = st_img[pidx * 4 + 1] * cRevt65535;
-			c.r = st_img[pidx * 4 + 2] * cRevt65535;
-			c.a = st_img[pidx * 4 + 3] * cRevt65535;
-			texture[pidx] = c;
+			c.b = st_img[src_idx * 4 + 0] * cRevt65535;
+			c.g = st_img[src_idx * 4 + 1] * cRevt65535;
+			c.r = st_img[src_idx * 4 + 2] * cRevt65535;
+			c.a = st_img[src_idx * 4 + 3] * cRevt65535;
+			texture[dst_idx] = c;
 		}
 	}
 	stbi_image_free(st_img);
 	return texture;
 }
 
-vector4_t sample_bilinear_interpolation(vector4_t* texture, int width, int height, const texcoord_t& texcoord)
+void save_tex_impl(const char* tex_path, const int& width, const int& height, unsigned int* data)
+{
+	stbi_write_png(tex_path, width, height, 4, data, width * 4);
+}
+
+
+vector4_t sample_bilinear(vector4_t* texture, int width, int height, const texcoord_t& texcoord)
 {
 	float u = clamp(texcoord.u, 0.0f, 1.0f) * (width - 1);
 	float v = clamp(texcoord.v, 0.0f, 1.0f) * (height - 1);
@@ -156,6 +165,8 @@ int direction_to_cubeuv(const vector3_t& dir, texcoord_t& tc)
 	return face_index;
 }
 
+
+
 void cube_uv_to_direction(int index, float u, float v, vector3_t& dir)
 {
 	// convert range [0, 1] to [-1, 1]
@@ -188,43 +199,113 @@ public:
 		texture = nullptr;
 	}
 
+	int tex_width() const
+	{
+		return width;
+	}
+
+	int tex_height() const
+	{
+		return width;
+	}
+
+	void init(int siz)
+	{
+		width = siz;
+		height = siz;
+		texture = new vector4_t[width * height];
+		for (int i = 0; i < height; ++i) {
+			for (int j = 0; j < width; ++j) {
+				int idx = i * width + j;
+				texture[idx].set(0.0f, 0.0f, 0.0f, 1.0f);
+			}
+		}
+	}
+
 	void load_tex(const char* tex_path)
 	{
 		texture = load_tex_impl(tex_path, width, height);
 	}
 
-	vector4_t sample(const texcoord_t& texcoord)
+	void save_tex(const char* tex_path)
 	{
-		return sample_bilinear_interpolation(texture, width, height, texcoord);
+		unsigned int* data = new unsigned int[width * height];
+		for (int i = 0; i < height; ++i) {
+			for (int j = 0; j < width; ++j) {
+				int idx = i * width + j;
+				data[idx] = makefour(texture[idx]);
+			}
+		}
+		save_tex_impl(tex_path, width, height, data);
+		delete data;
+	}
+
+	void write_at(int x, int y, const vector4_t& color)
+	{
+		assert(x >= 0 && x < width);
+		assert(y >= 0 && y < height);
+		texture[y * width + x] = color;
+	}
+
+	vector4_t sample(const texcoord_t& texcoord) const
+	{
+		return sample_bilinear(texture, width, height, texcoord);
 	}
 
 };
 
 class cube_texture_t
 {
-	texture2d_t surfaces[6];
+	const std::string face_tags[6] = { "px", "nx", "py", "ny", "pz", "nz" };
+	texture2d_t faces[6];
 public:
 	cube_texture_t()
 	{
 	}
 
-	void load_tex(const std::string& tex_path, const std::string& ext_name)
+	cube_texture_t(int siz)
 	{
-		const std::string faces[6] = { "px", "nx", "py", "ny", "pz", "nz" };
 		for (int i = 0; i < 6; ++i) {
-			std::string path = tex_path + "_" + faces[i] + ext_name;
-			surfaces[i].load_tex(path.c_str());
+			faces[i].init(siz);
 		}
 	}
 
-	vector4_t sample(const vector3_t& dir)
+	int size() const {
+		return faces[0].tex_width();
+	}
+
+	texture2d_t& get_face(int face_id) {
+		return faces[face_id];
+	}
+
+	void load_tex(const std::string& tex_path, const std::string& ext_name)
 	{
+		for (int i = 0; i < 6; ++i) {
+			std::string path = tex_path + "_" + face_tags[i] + ext_name;
+			faces[i].load_tex(path.c_str());
+		}
+	}
+
+	void save_tex(const std::string& tex_path)
+	{
+		for (int i = 0; i < 6; ++i) {
+			std::string path = tex_path + "_" + face_tags[i] + ".png";
+			faces[i].save_tex(path.c_str());
+		}
+	}
+
+	vector4_t sample(const vector3_t& dir) const
+	{
+		if (!appro_equal(dir.length(), 1.0f)) {
+			int kkk = 0;
+		}
 		assert(appro_equal(dir.length(), 1.0f));
 		texcoord_t tc;
-		int face_index = direction_to_cubeuv(dir, tc);
-		return surfaces[face_index].sample(tc);
+		int face_id = direction_to_cubeuv(dir, tc);
+		return faces[face_id].sample(tc);
 	}
 
 };
+
 
 #endif //__TEXTURE_H__

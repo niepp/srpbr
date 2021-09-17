@@ -148,6 +148,7 @@
     <ClInclude Include="model.h" />
     <ClInclude Include="pbr_common.h" />
     <ClInclude Include="stb_image.h" />
+    <ClInclude Include="stb_image_write.h" />
     <ClInclude Include="texture.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
