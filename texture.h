@@ -195,7 +195,7 @@ public:
 
 	~texture2d_t()
 	{
-		delete texture;
+		delete[] texture;
 		texture = nullptr;
 	}
 
@@ -209,10 +209,10 @@ public:
 		return width;
 	}
 
-	void init(int siz)
+	void init(int w, int h)
 	{
-		width = siz;
-		height = siz;
+		width = w;
+		height = h;
 		texture = new vector4_t[width * height];
 		for (int i = 0; i < height; ++i) {
 			for (int j = 0; j < width; ++j) {
@@ -238,7 +238,7 @@ public:
 			}
 		}
 		save_tex_impl(tex_path, width, height, data);
-		delete data;
+		delete[] data;
 	}
 
 	void write_at(int x, int y, const vector4_t& color)
@@ -257,7 +257,7 @@ public:
 
 class cube_texture_t
 {
-	const std::string face_tags[6] = { "px", "nx", "py", "ny", "pz", "nz" };
+	const std::string face_tags[6] = { "px", "nx", "pz", "nz", "ny", "py" };
 	texture2d_t faces[6];
 public:
 	cube_texture_t()
@@ -267,7 +267,7 @@ public:
 	cube_texture_t(int siz)
 	{
 		for (int i = 0; i < 6; ++i) {
-			faces[i].init(siz);
+			faces[i].init(siz, siz);
 		}
 	}
 

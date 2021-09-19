@@ -5,7 +5,7 @@
 #include <future>
 #include <vector>
 #include <string>
-
+#include <iomanip>
 
 float radical_inverse(unsigned int bits) {
 	bits = (bits << 16u) | (bits >> 16u);
@@ -92,40 +92,37 @@ cube_texture_t* calc_irradiance_map(const cube_texture_t *src_cube_tex)
 				vector3_t n;
 				cube_uv_to_direction(face_id, u, v, n);
 
-				// [ right ]
-				// | up    |
+				// [ tan_x ]
+				// | tan_y |
 				// [ n     ]
 				// makeup a rotation matrix
-				vector3_t up = fabs(n.y) < 0.999f ? vector3_t(0.0f, 1.0f, 0.0f) : vector3_t(0.0f, 0.0f, 1.0f);
-				vector3_t right = cross(up, n);
-				up = cross(n, right);
+				vector3_t up = fabs(n.z) < 0.999f ? vector3_t(0.0f, 0.0f, 1.0f) : vector3_t(1.0f, 0.0f, 0.0f);
+				vector3_t tan_x = cross(up, n);
+				tan_x.normalize();
+				vector3_t tan_y = cross(n, tan_x);
+				tan_y.normalize();
 
-				vector4_t irradiance(0, 0, 0, 0);
-				int sample_num = 0;
-
-				float sample_step = 0.125f;
-				for (float phi = 0.0f; phi < 2.0f * cPI; phi += sample_step)
+				vector3_t irradiance(0, 0, 0);
+				const int sample_num = 100;
+				for (int u = 0; u < sample_num; ++u)
+					for (int v = 0; v < sample_num; ++v)
 				{
-					for (float theta = 0.0f; theta < 0.5f * cPI; theta += sample_step)
-					{
-						// spherical to cartesian (in tangent space)
-						vector3_t tangent_dir(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
-						// tangent space to world
-						vector3_t sample_dir = right * tangent_dir.x + up * tangent_dir.y + n * tangent_dir.z;
-						sample_dir.normalize();
-						vector4_t color = src_cube_tex->sample(sample_dir);
+					// h is hemisphere direction in tangent space
+					vector3_t h = hemisphere_sample_uniform(1.0f * u / (sample_num - 1), 1.0f * v / (sample_num - 1));
 
-						float n_dot_l = max(dot(sample_dir, n), 0);
-						irradiance += color * n_dot_l;
-						++sample_num;
-					}
+					// convert h to world space
+					vector3_t sample_dir = tan_x * h.x + tan_y * h.y + n * h.z;
+					sample_dir.normalize();
+					vector3_t color = src_cube_tex->sample(sample_dir).to_vec3();
+
+					float n_dot_l = max(dot(sample_dir, n), 0);
+					irradiance += color * n_dot_l;
+
 				}
 
-				
-				irradiance = irradiance / sample_num;
-				//irradiance = src_cube_tex->sample(n);
-				//std::swap(irradiance.r, irradiance.b);
-			//	irradiance.set(1, 0, 0, 1);
+				irradiance = irradiance * cPI / (sample_num * sample_num);
+
+				std::swap(irradiance.x, irradiance.z);
 				face.write_at(j, i, irradiance);
 			}
 		}
@@ -152,7 +149,7 @@ void generate_irradiance_map(const std::string& src_texpath, const std::string& 
 	cube_texture_t src_cube;
 	src_cube.load_tex(src_texpath, ".png");
 	cube_texture_t *dst_cube = calc_irradiance_map(&src_cube);
-	dst_cube->save_tex(dst_texpath);	
+	dst_cube->save_tex(dst_texpath);
 }
 
 #endif // __PRE_COMPUTE_H__

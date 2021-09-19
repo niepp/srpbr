@@ -60,7 +60,7 @@ HWND hwnd = 0;
 HDC screenDC;
 
 int width = 0, height = 0;
-float angle_speed = 1.0f;
+float view_angle = 0.0f;
 vector3_t light_angle(cPI, cPI/2.0f, 0);
 float eyedist = 1.5f;
 
@@ -287,7 +287,6 @@ void pixel_process(int x, int y, const interp_vertex_t& p)
 		break;
 	case shading_model_t::eSM_PBR:
 		pbr_shading(p, color);
-		//color = vector4_t::one() / p.pos.w;
 		break;
 	case shading_model_t::eSM_Skybox:
 		{
@@ -606,16 +605,16 @@ void render_scene()
 		zbuffer[i] = FLT_MAX;
 	}
 
-	angle_speed += 0.05f;
+//	view_angle += cPI / 64.0f;
 
 	matrix_t mrot;
-	mrot.set_rotate(0, 0, 1, angle_speed);
+	mrot.set_rotate(0, 0, 1, view_angle);
 
 	uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
 	uniformbuffer.eye = mrot * uniformbuffer.eye;
 
 	vector3_t at(0.0f, 0.0f, 0.0f);
-	vector3_t up(0.0f, 0.0f, 1.0f);
+	vector3_t up(0.0f, 0.0f, 1.0f); // z axis
 	uniformbuffer.view.set_lookat(uniformbuffer.eye, at, up);
 	matrix_t vp = mul(uniformbuffer.view, uniformbuffer.proj);
 	draw_cartesian_coordinate(vp);
@@ -629,8 +628,7 @@ void render_scene()
 	shading_model = shading_model_t::eSM_Skybox;
 	render_model(&sphere_model);
 
-
-	angle_speed += 0.008f;
+	view_angle += 0.008f;
 	mscale.set_scale(1.6f, 1.6f, 1.6f);
 	uniformbuffer.world = mul(mscale, mrot);
 	uniformbuffer.world.set_translate(0, 0, -0.8f);
@@ -640,12 +638,34 @@ void render_scene()
 	render_model(&sphere_model);
 
 
+	
+
+
+
+
 	//uniformbuffer.world = mul(mscale, mrot);
 	//uniformbuffer.world.set_translate(0.6f, 0, -0.8f);
 	//uniformbuffer.mvp = mul(uniformbuffer.world, vp);
 
 	//render_model(&sphere_model);
 
+}
+
+void save_framebuffer(const std::string &fb_texpath)
+{
+	unsigned int* data = new unsigned int[width * height];
+	for (int i = 0; i < height; ++i) {
+		for (int j = 0; j < width; ++j) {
+			int src_idx = i * width + j;
+			int dst_idx = (height - 1 - i) * width + j;
+			vector4_t color;
+			to_color(framebuffer[src_idx], color);
+			std::swap(color.r, color.b);
+			data[dst_idx] = makefour(color);
+		}
+	}
+	stbi_write_png(fb_texpath.c_str(), width, height, 4, data, width * 4);
+	delete[] data;
 }
 
 void main_loop()
@@ -669,7 +689,12 @@ void main_loop()
 			int64_t tick_now = 0;
 			::QueryPerformanceCounter((LARGE_INTEGER*)&tick_now);
 			float dt_ms = (tick_now - tick_start)* reci_freq;
-			++frame_count;
+			if (++frame_count >= 90) // limit to fps 90
+			{
+				if (dt_ms < 1000.0f) {
+					::Sleep(1000.0f - dt_ms);
+				}
+			}
 			if (dt_ms >= 1000.0f)
 			{
 				frame_rate = (uint32_t)(frame_count * 1000.0f / dt_ms);
@@ -681,6 +706,8 @@ void main_loop()
 			}
 
 			render_scene();
+
+			save_framebuffer("./framebuffer.png");
 
 			HDC hDC = GetDC(hwnd);
 			BitBlt(hDC, 0, 0, width, height, screenDC, 0, 0, SRCCOPY);
@@ -848,6 +875,17 @@ int main(void)
 	roughness_tex.load_tex("./resource/rustediron2_roughness.png");
 	normal_tex.load_tex("./resource/rustediron2_normal.png");
 
+	//for (int i = 0; i < 2048; ++i)
+	//{
+	//	for (int j = 0; j < 2048; ++j)
+	//	{
+	//		albedo_tex.write_at(i, j, vector4_t(0.0f, 1.0f, 0, 1.0f));
+	//	}
+	//}
+	//albedo_tex.save_tex("./resource/rustediron2_basecolor_save.png");
+
+	//return 0;
+
 	uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
 	uniformbuffer.light_dir.set(0.0f, -1.0f, 0.0f);
 	uniformbuffer.light_intensity.set(1.0f, 1.0f, 1.0f);
@@ -864,3 +902,4 @@ int main(void)
 	return 0;
 
 }
+

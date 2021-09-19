@@ -576,17 +576,17 @@ uint8_t to_color_int(float c)
 
 unsigned int makefour(const vector4_t& color)
 {
-	return to_color_int(color.r)
+	return to_color_int(color.b)
 		| to_color_int(color.g) << 8
-		| to_color_int(color.b) << 16
+		| to_color_int(color.r) << 16
 		| to_color_int(color.a) << 24;
 }
 
 void to_color(unsigned int cint, vector4_t& color)
 {
-	color.r = cRevt255 * (cint & 0xff);
+	color.b = cRevt255 * (cint & 0xff);
 	color.g = cRevt255 * ((cint >> 8) & 0xff);
-	color.b = cRevt255 * ((cint >> 16) & 0xff);
+	color.r = cRevt255 * ((cint >> 16) & 0xff);
 	color.a = cRevt255 * ((cint >> 24) & 0xff);
 }
 
