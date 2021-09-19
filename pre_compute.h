@@ -173,10 +173,10 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 		{
 			for (int j = 0; j < siz; ++j)
 			{
-				float u = 1.0f * j / (siz - 1);
-				float v = 1.0f * i / (siz - 1);
+				float ux = 1.0f * j / (siz - 1);
+				float uy = 1.0f * i / (siz - 1);
 				vector3_t n;
-				cube_uv_to_direction(face_id, u, v, n);
+				cube_uv_to_direction(face_id, ux, uy, n);
 
 				// [ tan_x ]
 				// | tan_y |
@@ -188,6 +188,9 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 				vector3_t tan_y = cross(n, tan_x);
 				tan_y.normalize();
 
+				vector3_t r = n;
+				vector3_t v = r;
+
 				vector3_t filtered_color(0, 0, 0);
 				float weight = 0;
 
@@ -198,13 +201,12 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 					hammersley(i, sample_num, e1, e2);
 
 					vector4_t s = importance_sample_GGX(e1, e2, n, roughness);
-					vector3_t h = s.to_vec3();
 
 					// convert h to world space
-					vector3_t sample_dir = tan_x * h.x + tan_y * h.y + n * h.z;
-					sample_dir.normalize();
+					vector3_t h = tan_x * s.x + tan_y * s.y + n * s.z;
+					h.normalize();
 
-					vector3_t l = reflect(h, n);
+					vector3_t l = h * 2.0f * dot(v, h) - v;
 					l.normalize();
 
 					float NoL = max(dot(n, l), 0.0f);
@@ -217,13 +219,14 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 				}
 
 				filtered_color /= max(weight, 0.001f);
+				std::swap(filtered_color.x, filtered_color.z);
 				face.write_at(i, j, filtered_color);
 			}
 		}
 	};
 
 	int max_siz = src_cube_tex.size();
-	int mip_num = (int)ceil(std::log2(max_siz));
+	int mip_num = (int)ceil(std::log2(max_siz)) + 1;
 	for (int i = 0; i < mip_num; ++i)
 	{
 		std::vector<std::future<void>> futures;
@@ -242,6 +245,7 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 			future.get();
 		}
 		dst_cube_tex.save_tex(dst_texpath + "_mip_" + std::to_string(i));
+
 	}
 
 }

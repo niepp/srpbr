@@ -836,9 +836,9 @@ int main(void)
 
 	//generate_irradiance_map("./resource/ibl_textures/env", "./resource/ibl_textures/irradiance");
 
-	generate_prefilter_envmap("./resource/ibl_textures/env", "./resource/ibl_textures/prefilter");
+	//generate_prefilter_envmap("./resource/ibl_textures/env", "./resource/ibl_textures/prefilter");
 
-	return 0;
+	//return 0;
 
 
 	width = 800;
@@ -876,17 +876,6 @@ int main(void)
 	metallic_tex.load_tex("./resource/rustediron2_metallic.png");
 	roughness_tex.load_tex("./resource/rustediron2_roughness.png");
 	normal_tex.load_tex("./resource/rustediron2_normal.png");
-
-	//for (int i = 0; i < 2048; ++i)
-	//{
-	//	for (int j = 0; j < 2048; ++j)
-	//	{
-	//		albedo_tex.write_at(i, j, vector4_t(0.0f, 1.0f, 0, 1.0f));
-	//	}
-	//}
-	//albedo_tex.save_tex("./resource/rustediron2_basecolor_save.png");
-
-	//return 0;
 
 	uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
 	uniformbuffer.light_dir.set(0.0f, -1.0f, 0.0f);
