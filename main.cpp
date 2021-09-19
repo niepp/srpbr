@@ -692,7 +692,7 @@ void main_loop()
 			if (++frame_count >= 90) // limit to fps 90
 			{
 				if (dt_ms < 1000.0f) {
-					::Sleep(1000.0f - dt_ms);
+					::Sleep(1000 - (DWORD)dt_ms);
 				}
 			}
 			if (dt_ms >= 1000.0f)
@@ -834,7 +834,9 @@ HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
 int main(void)
 {
 
-	generate_irradiance_map("./resource/ibl/env", "./resource/ibl/irradiance");
+	//generate_irradiance_map("./resource/ibl_textures/env", "./resource/ibl_textures/irradiance");
+
+	generate_prefilter_envmap("./resource/ibl_textures/env", "./resource/ibl_textures/prefilter");
 
 	return 0;
 
@@ -866,7 +868,7 @@ int main(void)
 		zbuffer[i] = FLT_MAX;
 	}
 
-	env_map.load_tex("./resource/ibl/env", ".png");
+	env_map.load_tex("./resource/ibl_textures/env", ".png");
 
 	ibl.load("./resource/");
 
