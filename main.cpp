@@ -188,6 +188,23 @@ void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 }
 
+vector3_t normal_mapping(const vector3_t& vt_n, const vector3_t& ts_n)
+{
+	// [ tan_x ]
+	// | tan_y |
+	// [ n     ]
+	// makeup a rotation matrix
+	vector3_t up = fabs(vt_n.z) < 0.999f ? vector3_t(0.0f, 0.0f, 1.0f) : vector3_t(1.0f, 0.0f, 0.0f);
+	vector3_t tan_x = cross(up, vt_n);
+	tan_x.normalize();
+	vector3_t tan_y = cross(vt_n, tan_x);
+	tan_y.normalize();
+
+	// convert h to world space
+	vector3_t ws_n = tan_x * ts_n.x + tan_y * ts_n.y + vt_n * ts_n.z;
+	ws_n.normalize();
+	return ws_n;
+}
 
 void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 {
@@ -195,14 +212,20 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	uv.u /= p.pos.w;
 	uv.v /= p.pos.w;
 
-	pbr_param.n = p.nor / p.pos.w;
-	pbr_param.n.normalize();
+	vector3_t vt_n = p.nor / p.pos.w;
+	vt_n.normalize();
 
 	vector3_t wpos = p.wpos / p.pos.w;
 
+	vector3_t tangent_space_n = normal_tex.sample(uv).to_vec3();
 	vector3_t albedo = albedo_tex.sample(uv).to_vec3();
 	vector4_t metallic_texel = metallic_tex.sample(uv);
 	vector4_t roughness_texel = roughness_tex.sample(uv);
+
+	tangent_space_n = tangent_space_n * 2.0f - vector3_t::one();
+	tangent_space_n.normalize();
+	pbr_param.n = normal_mapping(vt_n, tangent_space_n);
+	pbr_param.n.normalize();
 
 	pbr_param.v = uniformbuffer.eye - wpos;
 	pbr_param.v.normalize();
