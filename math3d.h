@@ -22,10 +22,10 @@ const float cPI = 3.1415926f;
 const float cRevt255 = 1.0f / 255.0f;
 const float cRevt65535 = 1.0f / 65535.0f;
 
-
-inline bool is_valid(float f)
+template<typename T>
+inline bool is_valid(T f)
 {
-	return f == f;
+	return !(isinf(f) || isnan(f));
 }
 
 inline float fast_inv_sqrt(float x)
@@ -68,8 +68,6 @@ inline double fast_exp(double x)
 	*(reinterpret_cast<int*>(&d) + 1) = static_cast<int>(1512775 * x + 1072632447);
 	return d;
 }
-
-
 
 struct texcoord_t
 {
@@ -682,5 +680,26 @@ vector3_t reflect(const vector3_t& n, const vector3_t& l)
 	return r;
 }
 
+bool is_valid(const vector3_t& v)
+{
+	return is_valid(v.x) && is_valid(v.y) && is_valid(v.z);
+}
+
+bool is_valid(const vector4_t& v)
+{
+	return is_valid(v.x) && is_valid(v.y) && is_valid(v.z) && is_valid(v.w);
+}
+
+bool is_valid(const matrix_t& m)
+{
+	for (int i = 0; i < 4; ++i) {
+		for (int j = 0; j < 4; ++j) {
+			if (!is_valid(m.m[i][j])) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
 
 #endif //__MATH3D_H__

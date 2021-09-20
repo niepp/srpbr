@@ -51,7 +51,7 @@ enum class cull_mode_t {
 bool has_spec = true;
 bool has_indirect_light = true;
 
-float float_control_roughness = 1.0f;
+float float_control_roughness = 0.0f;
 
 float reci_freq;
 int64_t tick_start;
@@ -110,7 +110,7 @@ void write_pixel(int x, int y, uint32_t color)
 
 void write_depth(int x, int y, float z)
 {
-	// zbuffer store the reverse-z value
+	// zbuffer store the clip space reverse-z value
 	// https://developer.nvidia.com/content/depth-precision-visualized
 	assert(x >= 0 && x < width);
 	assert(y >= 0 && y < height);
@@ -222,6 +222,7 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	pbr_param.roughness = roughness_texel.r;
 
 	pbr_param.roughness *= float_control_roughness;
+	pbr_param.roughness = max(pbr_param.roughness, 0.0001f); // roughness为0，对应着完全的反射，对于非面积光源，会产生无穷大的反射值（能量全部集中到了面积为0的一点上）
 
 	float a = pbr_param.roughness * pbr_param.roughness;
 	float a2 = a * a;
@@ -238,8 +239,7 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	float V = V_Schlick_GGX(a, pbr_param.NoV, pbr_param.NoL);
 
-	if (V != V)
-	{
+	if (!is_valid(V)) {
 		int kkk = 0;
 	}
 
@@ -266,8 +266,6 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	if (has_indirect_light)
 		radiance += indirect_radiance;
 
-
-
 	reinhard_mapping(radiance);
 
 	out_color = radiance;
@@ -290,14 +288,9 @@ void pixel_process(int x, int y, const interp_vertex_t& p)
 		break;
 	case shading_model_t::eSM_Skybox:
 		{
-			
 			vector3_t n = p.nor / p.pos.w;
 			n.normalize();
-			
-			//if (n.x > 0 && n.z > 0)
-			{
-				color = env_map.sample(n);
-			}
+			color = env_map.sample(n);
 		}
 		break;
 	default:
@@ -368,12 +361,19 @@ void scan_triangle(scan_tri_t *sctri)
 
 }
 
-bool check_clip(vector4_t* p, int width, int height)
+bool check_clip(const vector4_t* p, int width, int height)
 {
 	if (p->x < 0 || p->x >= width) return false;
 	if (p->y < 0 || p->y >= height) return false;
 	if (p->z < 0.0f || p->z > 1.0f) return false;
 	return true;
+}
+
+bool check_clip_triangle(const vector4_t* p0, const vector4_t* p1, const vector4_t* p2)
+{
+	return check_clip(p0, width, height)
+		|| check_clip(p1, width, height)
+		|| check_clip(p2, width, height);
 }
 
 void perspective_divide(interp_vertex_t* p)
@@ -468,6 +468,11 @@ void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c)
 {
 	vector4_t v0 = p0;
 	vector4_t v1 = p1;
+
+	if (!(check_clip(&v0, width, height) || check_clip(&v0, width, height))) {
+		return;
+	}
+
 	float dx = std::abs(v0.x - v1.x);
 	float dy = std::abs(v0.y - v1.y);
 
@@ -477,16 +482,24 @@ void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c)
 			std::swap(v0, v1);
 		}
 
-		int xmin = (int)(v0.x);
-		int xmax = (int)(v1.x + 0.5f);
+		int xmin = clamp((int)(v0.x), 0, width - 1);
+		int xmax = clamp((int)(v1.x + 0.5f), 0, width - 1);
 		float y = v0.y;
-		write_pixel(xmin, (int)y, c);
+		int iy = (int)y;
+		if (iy >= 0 && iy < height) {
+			write_pixel(xmin, iy, c);
+		}
+
 		if (xmax > xmin) {
 			float delta = (v1.y - v0.y) / dx;
 			for (int x = xmin; x < xmax; ++x)
 			{
 				y += delta;
-				write_pixel(x, (int)(y), c);
+				iy = (int)y;
+				if (iy < 0 || iy >= height) {
+					break;
+				}
+				write_pixel(x, iy, c);
 			}
 		}
 	}
@@ -495,16 +508,24 @@ void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c)
 			std::swap(v0, v1);
 		}
 
-		int ymin = (int)(v0.y);
-		int ymax = (int)(v1.y + 0.5f);
+		int ymin = clamp((int)(v0.y), 0, height - 1);
+		int ymax = clamp((int)(v1.y + 0.5f), 0, height - 1);
 		float x = v0.x;
-		write_pixel((int)x, ymin, c);
+		int ix = (int)x;
+		if (ix >= 0 && ix < width) {
+			write_pixel(ix, ymin, c);
+		}
+		
 		if (ymax > ymin) {
 			float delta = (v1.x - v0.x) / dy;
 			for (int y = ymin; y < ymax; ++y)
 			{
 				x += delta;
-				write_pixel((int)(x), y, c);
+				ix = (int)x;
+				if (ix < 0 || ix >= width) {
+					break;
+				}
+				write_pixel(ix, y, c);
 			}
 		}
 	}
@@ -513,10 +534,10 @@ void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c)
 
 void draw_cartesian_coordinate(const matrix_t& mvp)
 {
-	vector3_t o(0, 0, 0);
-	vector3_t x(1, 0, 0);
-	vector3_t y(0, 1, 0);
-	vector3_t z(0, 0, 1);
+	static const vector3_t o(0, 0, 0);
+	static const vector3_t x(1, 0, 0);
+	static const vector3_t y(0, 1, 0);
+	static const vector3_t z(0, 0, 1);
 
 	auto transform_to_screen = [](const matrix_t& mvp, const vector3_t& p) -> vector4_t
 	{
@@ -575,9 +596,9 @@ void render_model(model_t *model)
 		interp_vertex_t* p1 = &vb_post[i1];
 		interp_vertex_t* p2 = &vb_post[i2];
 
-		//if (!check_clip(&p0->pos, width, height)) return;
-		//if (!check_clip(&p1->pos, width, height)) return;
-		//if (!check_clip(&p2->pos, width, height)) return;
+		if (!check_clip_triangle(&p0->pos, &p1->pos, &p2->pos)) {
+			continue;
+		}
 
 		// make sure p0y <= p1y <= p2y
 		if (p0->pos.y > p1->pos.y) std::swap(p0, p1);
@@ -590,12 +611,11 @@ void render_model(model_t *model)
 			draw_line(p1->pos, p2->pos, 0xffffffff);
 			draw_line(p2->pos, p0->pos, 0xffffffff);
 		}
-		else
-		{
+		else {
 			draw_triangle(*p0, *p1, *p2);
 		}
 	}
-
+	
 }
 
 void render_scene()
@@ -605,7 +625,7 @@ void render_scene()
 		zbuffer[i] = FLT_MAX;
 	}
 
-//	view_angle += cPI / 64.0f;
+	//view_angle += cPI / 128.0f;
 
 	matrix_t mrot;
 	mrot.set_rotate(0, 0, 1, view_angle);
@@ -625,28 +645,24 @@ void render_scene()
 	uniformbuffer.world.set_translate(0, 0, -500.0f);
 	uniformbuffer.mvp = mul(uniformbuffer.world, vp);
 	cull_mode = cull_mode_t::eCM_CCW;
-	shading_model = shading_model_t::eSM_Skybox;
-	render_model(&sphere_model);
 
-	view_angle += 0.008f;
+	shading_model_t old_sm = shading_model;
+	if (shading_model != shading_model_t::eSM_Wireframe) {
+		shading_model = shading_model_t::eSM_Skybox;
+	}
+	render_model(&sphere_model);
+	shading_model = old_sm;
+
 	mscale.set_scale(1.6f, 1.6f, 1.6f);
 	uniformbuffer.world = mul(mscale, mrot);
 	uniformbuffer.world.set_translate(0, 0, -0.8f);
 	uniformbuffer.mvp = mul(uniformbuffer.world, vp);
 	cull_mode = cull_mode_t::eCM_CW;
-	shading_model = shading_model_t::eSM_PBR;
 	render_model(&sphere_model);
-
-
-	
-
-
-
 
 	//uniformbuffer.world = mul(mscale, mrot);
 	//uniformbuffer.world.set_translate(0.6f, 0, -0.8f);
 	//uniformbuffer.mvp = mul(uniformbuffer.world, vp);
-
 	//render_model(&sphere_model);
 
 }
@@ -707,8 +723,6 @@ void main_loop()
 
 			render_scene();
 
-			save_framebuffer("./framebuffer.png");
-
 			HDC hDC = GetDC(hwnd);
 			BitBlt(hDC, 0, 0, width, height, screenDC, 0, 0, SRCCOPY);
 			ReleaseDC(hwnd, hDC);
@@ -738,8 +752,12 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		{
 		case 'C':
 			shading_model = (shading_model_t)((int)shading_model + 1);
-			if (shading_model == shading_model_t::eSM_MAX)
+			if (shading_model == shading_model_t::eSM_Skybox) {
+				shading_model = (shading_model_t)((int)shading_model + 1);
+			}
+			if (shading_model == shading_model_t::eSM_MAX) {
 				shading_model = shading_model_t::eSM_Color;
+			}
 			std::cout << (int)shading_model << std::endl;
 			break;
 		case 'S':
@@ -779,7 +797,9 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			float_control_roughness -= 0.02f;
 			clamp(float_control_roughness, 0.0f, 1.0f);
 			break;
-
+		case 'P':
+			save_framebuffer("./framebuffer.png");
+			break;
 		default:
 			break;
 		}
@@ -836,9 +856,9 @@ int main(void)
 
 	//generate_irradiance_map("./resource/ibl_textures/env", "./resource/ibl_textures/irradiance");
 
-	//generate_prefilter_envmap("./resource/ibl_textures/env", "./resource/ibl_textures/prefilter");
+//	generate_prefilter_envmap("./resource/ibl_textures/env", "./resource/ibl_textures/prefilter");
 
-	//return 0;
+//	return 0;
 
 
 	width = 800;
@@ -870,7 +890,7 @@ int main(void)
 
 	env_map.load_tex("./resource/ibl_textures/env", ".png");
 
-	ibl.load("./resource/");
+	ibl.load("./resource/ibl_textures/");
 
 	albedo_tex.load_tex("./resource/rustediron2_basecolor.png");
 	metallic_tex.load_tex("./resource/rustediron2_metallic.png");

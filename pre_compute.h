@@ -82,10 +82,11 @@ void generate_irradiance_map(const std::string& src_texpath, const std::string& 
 		{
 			for (int j = 0; j < siz; ++j)
 			{
-				float u = 1.0f * j / (siz - 1);
-				float v = 1.0f * i / (siz - 1);
+				texcoord_t tc;
+				tc.u = 1.0f * i / (siz - 1);
+				tc.v = 1.0f * j / (siz - 1);
 				vector3_t n;
-				cube_uv_to_direction(face_id, u, v, n);
+				cube_uv_to_direction(face_id, tc, n);
 
 				// [ tan_x ]
 				// | tan_y |
@@ -173,10 +174,11 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 		{
 			for (int j = 0; j < siz; ++j)
 			{
-				float ux = 1.0f * j / (siz - 1);
-				float uy = 1.0f * i / (siz - 1);
+				texcoord_t tc;
+				tc.u = 1.0f * i / (siz - 1);
+				tc.v = 1.0f * j / (siz - 1);
 				vector3_t n;
-				cube_uv_to_direction(face_id, ux, uy, n);
+				cube_uv_to_direction(face_id, tc, n);
 
 				// [ tan_x ]
 				// | tan_y |
@@ -229,12 +231,15 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 	int mip_num = (int)ceil(std::log2(max_siz)) + 1;
 	for (int i = 0; i < mip_num; ++i)
 	{
-		std::vector<std::future<void>> futures;
-	
 		int siz = (max_siz >> i);
+		if (siz <= 0) {
+			break;
+		}
 		cube_texture_t dst_cube_tex(siz);
-
 		float roughness = 1.0f * i / (mip_num - 1);
+
+		std::vector<std::future<void>> futures;
+
 		for (int face_id = 0; face_id < 6; ++face_id) {
 			texture2d_t& face = dst_cube_tex.get_face(face_id);
 			futures.push_back(std::move(std::async(std::launch::async, [&face_filter_func, roughness, siz, &face, face_id]() {

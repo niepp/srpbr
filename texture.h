@@ -167,11 +167,11 @@ int direction_to_cubeuv(const vector3_t& dir, texcoord_t& tc)
 
 
 
-void cube_uv_to_direction(int index, float u, float v, vector3_t& dir)
+void cube_uv_to_direction(int index, const texcoord_t& tc, vector3_t& dir)
 {
 	// convert range [0, 1] to [-1, 1]
-	u = 2.0f * u - 1.0f;
-	v = 2.0f * v - 1.0f;
+	float u = 2.0f * tc.u - 1.0f;
+	float v = 2.0f * tc.v - 1.0f;
 	switch (index)
 	{
 	case 0: dir.set(1.0f, u, v); break;		// +X
