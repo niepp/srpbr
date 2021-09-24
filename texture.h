@@ -22,7 +22,7 @@ void rgbe2float(float& red, float& green, float& blue, unsigned char rgbe[4])
 	}
 }
 
-vector4_t* load_tex_impl(const char* tex_path, int& width, int& height, bool vertical_flip = true)
+vector4_t* load_tex_impl(const char* tex_path, int& width, int& height, bool is_srgb, bool vertical_flip = true)
 {
 	int components = 0;
 	stbi_us* st_img = stbi_load_16(tex_path, &width, &height, &components, STBI_rgb_alpha);
@@ -44,6 +44,9 @@ vector4_t* load_tex_impl(const char* tex_path, int& width, int& height, bool ver
 			c.g = st_img[src_idx * 4 + 1] * cRevt65535;
 			c.b = st_img[src_idx * 4 + 2] * cRevt65535;
 			c.a = st_img[src_idx * 4 + 3] * cRevt65535;
+			if (is_srgb) {
+				c = srgb_to_linear(c);
+			}
 			texture[dst_idx] = c;
 		}
 	}
@@ -222,19 +225,20 @@ public:
 		}
 	}
 
-	void load_tex(const char* tex_path, bool vertical_flip = true)
+	void load_tex(const char* tex_path, bool is_srgb, bool vertical_flip = true)
 	{
-		texture = load_tex_impl(tex_path, width, height, vertical_flip);
+		texture = load_tex_impl(tex_path, width, height, is_srgb, vertical_flip);
 	}
 
-	void save_tex(const char* tex_path, bool vertical_flip = true)
+	void save_tex(const char* tex_path, bool is_srgb, bool vertical_flip = true)
 	{
 		unsigned int* data = new unsigned int[width * height];
 		for (int i = 0; i < height; ++i) {
 			for (int j = 0; j < width; ++j) {
 				int src_idx = i * width + j;
 				int dst_idx = (vertical_flip ? height - 1 - i : i) * width + j;
-				data[dst_idx] = makefour(texture[src_idx]);
+				vector4_t color = is_srgb ? gamma_correction(texture[src_idx]) : texture[src_idx];
+				data[dst_idx] = makefour(color);
 			}
 		}
 		save_tex_impl(tex_path, width, height, data);
@@ -246,6 +250,13 @@ public:
 		assert(x >= 0 && x < width);
 		assert(y >= 0 && y < height);
 		texture[y * width + x] = color;
+	}
+
+	vector4_t read_at(int x, int y) const
+	{
+		assert(x >= 0 && x < width);
+		assert(y >= 0 && y < height);
+		return texture[y * width + x];
 	}
 
 	vector4_t sample(const texcoord_t& texcoord) const
@@ -276,31 +287,64 @@ public:
 		return faces[0].tex_width();
 	}
 
-	texture2d_t& get_face(int face_id) {
+	const texture2d_t& get_face(int face_id) const
+	{
 		return faces[face_id];
 	}
 
-	void load_tex(const std::string& tex_path, const std::string& ext_name)
+	texture2d_t& get_face(int face_id)
+	{
+		return faces[face_id];
+	}
+
+	void load_tex(const std::string& tex_path, const std::string& ext_name, bool is_srgb)
 	{
 		for (int i = 0; i < 6; ++i) {
 			std::string path = tex_path + "_" + face_tags[i] + ext_name;
-			faces[i].load_tex(path.c_str());
+			faces[i].load_tex(path.c_str(), is_srgb);
 		}
 	}
 
-	void save_tex(const std::string& tex_path)
+	void save_tex(const std::string& tex_path, bool is_srgb)
 	{
 		for (int i = 0; i < 6; ++i) {
 			std::string path = tex_path + "_" + face_tags[i] + ".png";
-			faces[i].save_tex(path.c_str());
+			faces[i].save_tex(path.c_str(), is_srgb);
 		}
+	}
+
+	void save_as_fold(const std::string& tex_path, bool is_srgb)
+	{
+		int siz = this->size();
+		int w = siz * 4;
+		int h = siz * 3;
+		unsigned int* data = new unsigned int[w * h];
+		for (int i = 0; i < w *h; ++i) {
+			data[i] = 0xFFFFFFFF;
+		}
+
+		const int base_xy[6][2] = {
+			 {2, 1}, {0, 1}, {1, 2},
+			 {1, 0}, {1, 1}, {3, 1}
+		};
+		for (int k = 0; k < 6; ++k)	{
+			int bx = base_xy[k][0] * siz;
+			int by = base_xy[k][1] * siz;
+			for (int i = 0; i < siz; ++i) {
+				for (int j = 0; j < siz; ++j) {
+					int idx = (h - 1 - (i + by)) * w + (j + bx);
+					vector4_t color = faces[k].read_at(j, i);
+					color = is_srgb ? gamma_correction(color) : color;
+					data[idx] = makefour(color);
+				}
+			}
+		}
+		save_tex_impl(tex_path.c_str(), w, h, data);
+		delete[] data;
 	}
 
 	vector4_t sample(const vector3_t& dir) const
 	{
-		if (!appro_equal(dir.length(), 1.0f)) {
-			int kkk = 0;
-		}
 		assert(appro_equal(dir.length(), 1.0f));
 		texcoord_t tc;
 		int face_id = direction_to_cubeuv(dir, tc);

@@ -47,7 +47,7 @@ struct model_t
 	{
 	}
 
-	int load(std::string mpath)
+	int load(const std::string &mpath)
 	{
 		std::ifstream in;
 		in.open(mpath, std::ifstream::in);

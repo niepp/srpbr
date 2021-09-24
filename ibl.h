@@ -36,7 +36,7 @@ public:
 	void load(const std::string& tex_path)
 	{
 		std::string irmap_path = tex_path + "irradiance";
-		irradiance_map->load_tex(irmap_path, ".png");
+		irradiance_map->load_tex(irmap_path, ".png", false);
 
 		for (int i = 0; i < 10; ++i) // todo
 		{
@@ -47,13 +47,13 @@ public:
 			std::string copyOfStr = stringStream.str();
 
 			cube_texture_t* pf_map = new cube_texture_t;
-			pf_map->load_tex(stringStream.str(), ".png");
+			pf_map->load_tex(stringStream.str(), ".png", false);
 			prefilter_maps.push_back(pf_map);
 		}
 
 		/* brdf lookup texture */
 		std::string lut_path = tex_path + "brdf_lut.png";
-		brdf_lut->load_tex(lut_path.c_str());
+		brdf_lut->load_tex(lut_path.c_str(), false);
 
 	}
 
@@ -62,7 +62,6 @@ public:
 		vector3_t ks = F_fresenl_schlick_roughness(pbr_param.NoV, pbr_param.f0, pbr_param.roughness);
 		vector3_t kd = vector3_t::one() - ks;
 		vector3_t irradiance = irradiance_map->sample(pbr_param.n).to_vec3();
-		vector3_t diffuse = kd * irradiance * albedo;
 
 		//
 		vector3_t r = reflect(pbr_param.n, pbr_param.v);

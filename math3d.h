@@ -512,6 +512,44 @@ struct matrix_t
 };
 
 
+inline vector3_t minv(const vector3_t& a, const vector3_t& b)
+{
+	vector3_t p;
+	p.x = min(a.x, b.x);
+	p.y = min(a.y, b.y);
+	p.z = min(a.z, b.z);
+	return p;
+}
+
+inline vector3_t maxv(const vector3_t& a, const vector3_t& b)
+{
+	vector3_t p;
+	p.x = max(a.x, b.x);
+	p.y = max(a.y, b.y);
+	p.z = max(a.z, b.z);
+	return p;
+}
+
+inline vector4_t minv(const vector4_t& a, const vector4_t& b)
+{
+	vector4_t p;
+	p.x = min(a.x, b.x);
+	p.y = min(a.y, b.y);
+	p.z = min(a.z, b.z);
+	p.w = min(a.w, b.w);
+	return p;
+}
+
+inline vector4_t maxv(const vector4_t& a, const vector4_t& b)
+{
+	vector4_t p;
+	p.x = max(a.x, b.x);
+	p.y = max(a.y, b.y);
+	p.z = max(a.z, b.z);
+	p.w = max(a.w, b.w);
+	return p;
+}
+
 inline matrix_t mul(const matrix_t& a, const matrix_t& b)
 {
 	matrix_t c;
@@ -560,9 +598,9 @@ void clamp(T& x, T min, T max)
 }
 
 template <typename T>
-bool appro_equal(T t, T c)
+bool appro_equal(T t, T c, T Err = cEpslion)
 {
-	return abs(t - c) < cEpslion;
+	return abs(t - c) < Err;
 }
 
 uint8_t to_color_int(float c)
@@ -574,18 +612,77 @@ uint8_t to_color_int(float c)
 
 unsigned int makefour(const vector4_t& color)
 {
-	return to_color_int(color.b)
+	return to_color_int(color.r)
 		| to_color_int(color.g) << 8
-		| to_color_int(color.r) << 16
+		| to_color_int(color.b) << 16
 		| to_color_int(color.a) << 24;
 }
 
-void to_color(unsigned int cint, vector4_t& color)
+vector4_t to_color(unsigned int cint)
 {
-	color.b = cRevt255 * (cint & 0xff);
+	vector4_t color;
+	color.r = cRevt255 * (cint & 0xff);
 	color.g = cRevt255 * ((cint >> 8) & 0xff);
-	color.r = cRevt255 * ((cint >> 16) & 0xff);
+	color.b = cRevt255 * ((cint >> 16) & 0xff);
 	color.a = cRevt255 * ((cint >> 24) & 0xff);
+	return color;
+}
+
+// reference from "UE4 GammaCorrectionCommon.ush - sRGBToLinear"
+float srgb_to_linear(float c)
+{
+//	return c;
+	c = max(6.10352e-5f, c); // minimum positive non-denormal (fixes black problem on DX11 AMD and NV)
+	return c > 0.04045f ? pow(c * (1.0f / 1.055f) + 0.0521327f, 2.4f) : c * (1.0f / 12.92f);
+}
+
+float linear_to_srgb(float lin)
+{
+//	return lin;
+	if (lin < 0.00313067f) return lin * 12.92f;
+	return pow(lin, (1.0f / 2.4f)) * 1.055f - 0.055f;
+}
+
+vector4_t srgb_to_linear(const vector4_t& color)
+{
+	vector4_t linecolor;
+	linecolor.r = srgb_to_linear(color.r);
+	linecolor.g = srgb_to_linear(color.g);
+	linecolor.b = srgb_to_linear(color.b);
+	linecolor.a = color.a;
+	return linecolor;
+}
+
+vector4_t gamma_correction(const vector4_t& linecolor)
+{
+	vector4_t color;
+	color.r = linear_to_srgb(linecolor.r);
+	color.g = linear_to_srgb(linecolor.g);
+	color.b = linear_to_srgb(linecolor.b);
+	color.a = color.a;
+	return color;
+}
+
+// hdr tone mapping
+float aces(float value)
+{
+	const float a = 2.51f;
+	const float b = 0.03f;
+	const float c = 2.43f;
+	const float d = 0.59f;
+	const float e = 0.14f;
+	value = (value * (a * value + b)) / (value * (c * value + d) + e);
+	clamp(value, 0.0f, 1.0f);
+	return value;
+}
+
+vector3_t reinhard_mapping(const vector3_t& color)
+{
+	vector3_t ldr;
+	ldr.x = aces(color.x);
+	ldr.y = aces(color.y);
+	ldr.z = aces(color.z);
+	return ldr;
 }
 
 unsigned int lerp(unsigned int x1, unsigned int x2, float t)
@@ -633,44 +730,6 @@ interp_vertex_t lerp( const interp_vertex_t& a, const interp_vertex_t& b, float 
 	p.nor = lerp(a.nor, b.nor, w);
 	p.uv = lerp(a.uv, b.uv, w);
 	p.color = lerp(a.color, b.color, w);
-	return p;
-}
-
-vector3_t minv(const vector3_t& a, const vector3_t& b)
-{
-	vector3_t p;
-	p.x = min(a.x, b.x);
-	p.y = min(a.y, b.y);
-	p.z = min(a.z, b.z);
-	return p;
-}
-
-vector3_t maxv(const vector3_t& a, const vector3_t& b)
-{
-	vector3_t p;
-	p.x = max(a.x, b.x);
-	p.y = max(a.y, b.y);
-	p.z = max(a.z, b.z);
-	return p;
-}
-
-vector4_t minv(const vector4_t& a, const vector4_t& b)
-{
-	vector4_t p;
-	p.x = min(a.x, b.x);
-	p.y = min(a.y, b.y);
-	p.z = min(a.z, b.z);
-	p.w = min(a.w, b.w);
-	return p;
-}
-
-vector4_t maxv(const vector4_t& a, const vector4_t& b)
-{
-	vector4_t p;
-	p.x = max(a.x, b.x);
-	p.y = max(a.y, b.y);
-	p.z = max(a.z, b.z);
-	p.w = max(a.w, b.w);
 	return p;
 }
 

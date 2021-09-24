@@ -14,7 +14,6 @@
 
 #include "pre_compute.h"
 
-const vector3_t cOne(1.0f, 1.0f, 1.0f);
 
 /*
  有一边是水平的三角形
@@ -51,7 +50,7 @@ enum class cull_mode_t {
 bool has_spec = true;
 bool has_indirect_light = true;
 
-float float_control_roughness = 0.0f;
+float float_control_roughness = 1.0f;
 
 float reci_freq;
 int64_t tick_start;
@@ -125,68 +124,6 @@ bool depth_test(int x, int y, float z)
 	return z < nowz;
 }
 
-float gamma(float linear_color)
-{
-	const float cInvg = 1.0f / 2.2f;
-	return pow(linear_color, cInvg);
-}
-
-// hdr tone mapping
-float aces(float value)
-{
-	float a = 2.51f;
-	float b = 0.03f;
-	float c = 2.43f;
-	float d = 0.59f;
-	float e = 0.14f;
-	value = (value * (a * value + b)) / (value * (c * value + d) + e);
-	clamp(value, 0.0f, 1.0f);
-	return value;
-}
-
-void reinhard_mapping(vector3_t& color)
-{
-	for (int i = 0; i < 3; ++i)
-	{
-		color.vec[i] = aces(color.vec[i]);
-		color.vec[i] = gamma(color.vec[i]);
-	}
-}
-
-
-void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
-{
-	texcoord_t uv = p.uv;
-	uv.u /= p.pos.w;
-	uv.v /= p.pos.w;
-
-	vector3_t wnor = p.nor / p.pos.w;
-	wnor.normalize();
-
-	vector3_t wpos = p.wpos / p.pos.w;
-	vector3_t l = -uniformbuffer.light_dir;
-
-	vector4_t albedo = albedo_tex.sample(uv);
-
-	float NoL = dot(wnor, l);
-	NoL = max(NoL, 0.15f);
-
-	vector3_t diffuse = albedo.to_vec3() * uniformbuffer.light_intensity * NoL;
-
-	vector3_t v = uniformbuffer.eye - wpos;
-	v.normalize();
-
-	// (v + l) / 2
-	vector3_t h = v + l;
-	h.normalize();
-
-	float NoH = max(dot(wnor, h), 0.0f);
-	vector3_t ks(0.5f, 0.5f, 0.5f);
-	vector3_t specular = ks * uniformbuffer.light_intensity * max(0.0f, pow(NoH, uniformbuffer.specular_power));
-
-	out_color = diffuse + (has_spec ? specular : vector3_t());
-
-}
 
 vector3_t normal_mapping(const vector3_t& vt_n, const vector3_t& ts_n)
 {
@@ -204,6 +141,50 @@ vector3_t normal_mapping(const vector3_t& vt_n, const vector3_t& ts_n)
 	vector3_t ws_n = tan_x * ts_n.x + tan_y * ts_n.y + vt_n * ts_n.z;
 	ws_n.normalize();
 	return ws_n;
+}
+
+void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
+{
+	texcoord_t uv = p.uv;
+	uv.u /= p.pos.w;
+	uv.v /= p.pos.w;
+
+	vector3_t vt_n = p.nor / p.pos.w;
+	vt_n.normalize();
+
+	vector3_t wpos = p.wpos / p.pos.w;
+	vector3_t l = -uniformbuffer.light_dir;
+
+	vector4_t albedo = albedo_tex.sample(uv);
+	vector3_t tangent_space_n = normal_tex.sample(uv).to_vec3();
+
+	tangent_space_n = tangent_space_n * 2.0f - vector3_t::one();
+	tangent_space_n.normalize();
+	pbr_param.n = normal_mapping(vt_n, tangent_space_n);
+	pbr_param.n.normalize();
+
+	float NoL = dot(pbr_param.n, l);
+	NoL = max(NoL, 0.15f);
+
+	vector3_t diffuse = albedo.to_vec3() * uniformbuffer.light_intensity * NoL;
+
+	vector3_t v = uniformbuffer.eye - wpos;
+	v.normalize();
+
+	// (v + l) / 2
+	vector3_t h = v + l;
+	h.normalize();
+
+	float NoH = max(dot(pbr_param.n, h), 0.0f);
+	vector3_t ks(0.5f, 0.5f, 0.5f);
+	vector3_t specular = ks * uniformbuffer.light_intensity * max(0.0f, pow(NoH, uniformbuffer.specular_power));
+
+	vector3_t radiance = diffuse + (has_spec ? specular : vector3_t());
+
+	vector3_t ldr = reinhard_mapping(radiance);
+
+	out_color = gamma_correction(ldr);
+
 }
 
 void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
@@ -224,7 +205,10 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	tangent_space_n = tangent_space_n * 2.0f - vector3_t::one();
 	tangent_space_n.normalize();
-	pbr_param.n = normal_mapping(vt_n, tangent_space_n);
+	//pbr_param.n = normal_mapping(vt_n, tangent_space_n);
+
+	pbr_param.n = vt_n;
+
 	pbr_param.n.normalize();
 
 	pbr_param.v = uniformbuffer.eye - wpos;
@@ -271,7 +255,7 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	//kd和ks分别是漫反射和镜面反射系数，表征了入射能量在镜面反射和漫反射之间进行分配，以满足能量守恒定律。 因此kd + ks < 1
 	//F代表了材质表面反射率，那么我们可以直接让ks = F，然后令kd = (1 - ks) * (1 - metalness)。这实际上是将入射能量在镜面反射和漫反射之间进行了分配，以满足能量守恒定律
 	vector3_t ks = F;
-	vector3_t kd = (cOne - F) * (1.0f - pbr_param.metallic);
+	vector3_t kd = (vector3_t::one() - F) * (1.0f - pbr_param.metallic);
 
 	vector3_t directIrradiance = uniformbuffer.light_intensity * pbr_param.NoL;
 
@@ -289,9 +273,9 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	if (has_indirect_light)
 		radiance += indirect_radiance;
 
-	reinhard_mapping(radiance);
+	vector3_t ldr = reinhard_mapping(radiance);
 
-	out_color = radiance;
+	out_color = gamma_correction(ldr);
 
 }
 
@@ -313,12 +297,14 @@ void pixel_process(int x, int y, const interp_vertex_t& p)
 		{
 			vector3_t n = p.nor / p.pos.w;
 			n.normalize();
-			color = env_map.sample(n);
+			vector3_t radiance = env_map.sample(n).to_vec3();
+			color = gamma_correction(radiance);
 		}
 		break;
 	default:
 		break;
 	}
+	std::swap(color.r, color.b); // windows HDC is bgra format!
 	write_pixel(x, y, makefour(color));
 	write_depth(x, y, p.pos.z);
 }
@@ -648,7 +634,7 @@ void render_scene()
 		zbuffer[i] = FLT_MAX;
 	}
 
-	//view_angle += cPI / 128.0f;
+//	view_angle += cPI / 128.0f;
 
 	matrix_t mrot;
 	mrot.set_rotate(0, 0, 1, view_angle);
@@ -697,8 +683,7 @@ void save_framebuffer(const std::string &fb_texpath)
 		for (int j = 0; j < width; ++j) {
 			int src_idx = i * width + j;
 			int dst_idx = (height - 1 - i) * width + j;
-			vector4_t color;
-			to_color(framebuffer[src_idx], color);
+			vector4_t color = to_color(framebuffer[src_idx]);
 			std::swap(color.r, color.b);
 			data[dst_idx] = makefour(color);
 		}
@@ -879,9 +864,9 @@ int main(void)
 
 	//generate_irradiance_map("./resource/ibl_textures/env", "./resource/ibl_textures/irradiance");
 
-//	generate_prefilter_envmap("./resource/ibl_textures/env", "./resource/ibl_textures/prefilter");
+	//generate_prefilter_envmap("./resource/ibl_textures/env", "./resource/ibl_textures/prefilter");
 
-//	return 0;
+	//return 0;
 
 
 	width = 800;
@@ -911,14 +896,21 @@ int main(void)
 		zbuffer[i] = FLT_MAX;
 	}
 
-	env_map.load_tex("./resource/ibl_textures/env", ".png");
+	env_map.load_tex("./resource/ibl_textures/env", ".png", true);
 
 	ibl.load("./resource/ibl_textures/");
 
-	albedo_tex.load_tex("./resource/rustediron2_basecolor.png");
-	metallic_tex.load_tex("./resource/rustediron2_metallic.png");
-	roughness_tex.load_tex("./resource/rustediron2_roughness.png");
-	normal_tex.load_tex("./resource/rustediron2_normal.png");
+	//env_map.save_as_fold("./resource/env_fold.png");
+	//for (int i = 0; i < 10; ++i)
+	//{
+	//	ibl.prefilter_maps[i]->save_as_fold(std::string("./resource/prefilter_mip_") + std::to_string(i) + "_fold.png");
+	//}
+	//ibl.irradiance_map->save_as_fold("./resource/irradiance_fold.png");
+
+	albedo_tex.load_tex("./resource/rustediron2_basecolor.png", true);
+	metallic_tex.load_tex("./resource/rustediron2_metallic.png", true);
+	roughness_tex.load_tex("./resource/rustediron2_roughness.png", true);
+	normal_tex.load_tex("./resource/rustediron2_normal.png", false);
 
 	uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
 	uniformbuffer.light_dir.set(0.0f, -1.0f, 0.0f);
