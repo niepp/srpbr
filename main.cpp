@@ -229,7 +229,7 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	pbr_param.roughness = roughness_texel.r;
 
 	pbr_param.roughness *= float_control_roughness;
-	pbr_param.roughness = max(pbr_param.roughness, 0.0001f); // roughness为0，对应着完全的反射，对于非面积光源，会产生无穷大的反射值（能量全部集中到了面积为0的一点上）
+	pbr_param.roughness = clamp(pbr_param.roughness, 0.0001f, 1.0f); // roughness为0，对应着完全的反射，对于非面积光源，会产生无穷大的反射值（能量全部集中到了面积为0的一点上）
 
 	float a = pbr_param.roughness * pbr_param.roughness;
 	float a2 = a * a;
@@ -315,12 +315,12 @@ void scan_horizontal(const interp_vertex_t& vl, const interp_vertex_t& vr, int y
 	// left要往小取整，right要往大取整，避免三角形之间的接缝空隙！
 	int left = (int)(vl.pos.x);
 	int right = (int)(vr.pos.x + 0.5f);
-	clamp(left, 0, width - 1);
-	clamp(right, 0, width - 1);
+	left = clamp(left, 0, width - 1);
+	right = clamp(right, 0, width - 1);
 	for (int i = left; i < right; ++i)
 	{
 		float w = (i - vl.pos.x) / dist;
-		clamp(w, 0.0f, 1.0f);
+		w = clamp(w, 0.0f, 1.0f);
 		interp_vertex_t p = lerp(vl, vr, w);
 
 		if (p.pos.w < -0.1)
@@ -355,14 +355,14 @@ void scan_triangle(scan_tri_t *sctri)
 	// bottom要往小取整，top要往大取整，避免三角形之间的接缝空隙！
 	int bottom = (int)(ymin);
 	int top = (int)(ymax + 0.5f);
-	clamp(bottom, 0, height - 1);
-	clamp(top, 0, height - 1);
+	bottom = clamp(bottom, 0, height - 1);
+	top = clamp(top, 0, height - 1);
 
 	for (int i = bottom; i < top; ++i)
 	{
 		float cury = i + 0.0f;
 		float w = (ydist > 0 ? cury - ymin : cury - ymax) / ydist;
-		clamp(w, 0.0f, 1.0f);
+		w = clamp(w, 0.0f, 1.0f);
 		interp_vertex_t vl = lerp(sctri->l, sctri->p, w);
 		interp_vertex_t vr = lerp(sctri->r, sctri->p, w);
 		scan_horizontal(vl, vr, i);
@@ -557,8 +557,8 @@ void draw_cartesian_coordinate(const matrix_t& mvp)
 		tp.z *= revw;
 		tp.w = revw;
 		to_screen_coord(&tp);
-		clamp(tp.x, 0.0f, (width - 1) * 1.0f);
-		clamp(tp.y, 0.0f, (height - 1) * 1.0f);
+		tp.x = clamp(tp.x, 0.0f, (width - 1) * 1.0f);
+		tp.y = clamp(tp.y, 0.0f, (height - 1) * 1.0f);
 		return tp;
 	};
 
@@ -741,7 +741,7 @@ void main_loop()
 
 void update_light()
 {
-	clamp(light_angle.y, 0.0f, cPI);
+	light_angle.y = clamp(light_angle.y, 0.0f, cPI);
 	float cosw = cos(light_angle.y);
 	float sinw = sin(light_angle.y);
 	uniformbuffer.light_dir.x = sin(light_angle.x) * sinw;
@@ -799,11 +799,13 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		case 'R':
 			float_control_roughness += 0.02f;
-			clamp(float_control_roughness, 0.0f, 1.0f);
+			float_control_roughness = clamp(float_control_roughness, 0.0f, 2.0f);
+			std::cout << float_control_roughness << std::endl;
 			break;
 		case 'T':
 			float_control_roughness -= 0.02f;
-			clamp(float_control_roughness, 0.0f, 1.0f);
+			float_control_roughness = clamp(float_control_roughness, 0.0f, 2.0f);
+			std::cout << float_control_roughness << std::endl;
 			break;
 		case 'P':
 			save_framebuffer("./result/framebuffer.png");
