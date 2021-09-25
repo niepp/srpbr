@@ -806,7 +806,7 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			clamp(float_control_roughness, 0.0f, 1.0f);
 			break;
 		case 'P':
-			save_framebuffer("./framebuffer.png");
+			save_framebuffer("./result/framebuffer.png");
 			break;
 		default:
 			break;

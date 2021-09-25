@@ -44,9 +44,7 @@ vector4_t* load_tex_impl(const char* tex_path, int& width, int& height, bool is_
 			c.g = st_img[src_idx * 4 + 1] * cRevt65535;
 			c.b = st_img[src_idx * 4 + 2] * cRevt65535;
 			c.a = st_img[src_idx * 4 + 3] * cRevt65535;
-			if (is_srgb) {
-				c = srgb_to_linear(c);
-			}
+			c = is_srgb ? srgb_to_linear(c) : c;
 			texture[dst_idx] = c;
 		}
 	}
@@ -58,7 +56,6 @@ void save_tex_impl(const char* tex_path, const int& width, const int& height, un
 {
 	stbi_write_png(tex_path, width, height, 4, data, width * 4);
 }
-
 
 vector4_t sample_bilinear(vector4_t* texture, int width, int height, const texcoord_t& texcoord)
 {

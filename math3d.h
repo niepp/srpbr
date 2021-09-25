@@ -638,7 +638,7 @@ float srgb_to_linear(float c)
 
 float linear_to_srgb(float lin)
 {
-//	return lin;
+	//return lin;
 	if (lin < 0.00313067f) return lin * 12.92f;
 	return pow(lin, (1.0f / 2.4f)) * 1.055f - 0.055f;
 }
