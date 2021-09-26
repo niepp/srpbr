@@ -5,6 +5,7 @@
 #include <vector>
 #include <iostream>
 #include <cassert>
+#include <chrono>
 
 #include "math3d.h"
 #include "pbr_common.h"
@@ -98,6 +99,12 @@ template <typename T, int n>
 int array_size(T(&)[n])
 {
 	return n;
+}
+
+inline long long get_now_ms()
+{
+	auto tp_now = std::chrono::high_resolution_clock::now();
+	return std::chrono::duration_cast<std::chrono::milliseconds>(tp_now.time_since_epoch()).count();
 }
 
 void write_pixel(int x, int y, uint32_t color)
@@ -864,11 +871,11 @@ HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
 int main(void)
 {
 
-	//generate_irradiance_map("./resource/ibl_textures/env", "./resource/ibl_textures/irradiance");
+	generate_irradiance_map("./resource/ibl_textures/env", "./resource/ibl_textures/irradiance");
 
-	//generate_prefilter_envmap("./resource/ibl_textures/env", "./resource/ibl_textures/prefilter");
+	generate_prefilter_envmap("./resource/ibl_textures/env", "./resource/ibl_textures/prefilter");
 
-	//return 0;
+	return 0;
 
 
 	width = 800;
@@ -898,16 +905,9 @@ int main(void)
 		zbuffer[i] = FLT_MAX;
 	}
 
-	env_map.load_tex("./resource/ibl_textures/env", ".png", true);
+	env_map.load_tex("./resource/ibl_textures/env.png", true);
 
 	ibl.load("./resource/ibl_textures/");
-
-	//env_map.save_as_fold("./resource/env_fold.png");
-	//for (int i = 0; i < 10; ++i)
-	//{
-	//	ibl.prefilter_maps[i]->save_as_fold(std::string("./resource/prefilter_mip_") + std::to_string(i) + "_fold.png");
-	//}
-	//ibl.irradiance_map->save_as_fold("./resource/irradiance_fold.png");
 
 	albedo_tex.load_tex("./resource/rustediron2_basecolor.png", true);
 	metallic_tex.load_tex("./resource/rustediron2_metallic.png", true);
@@ -925,7 +925,12 @@ int main(void)
 	sphere_model.load("./resource/mesh_sphere.obj");
 
 	update_light();
-	main_loop();
+
+	render_scene();
+
+	save_framebuffer("./result/framebuffer_" + std::to_string(get_now_ms()) + ".png");
+
+//	main_loop();
 
 	return 0;
 

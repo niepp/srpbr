@@ -35,19 +35,16 @@ public:
 
 	void load(const std::string& tex_path)
 	{
-		std::string irmap_path = tex_path + "irradiance";
-		irradiance_map->load_tex(irmap_path, ".png", false);
-
-		for (int i = 0; i < 10; ++i) // todo
+		irradiance_map->load_tex(tex_path + "irradiance.png", false);
+		for (int i = 0; i < 10; ++i)
 		{
-			std::ostringstream stringStream;
-			stringStream << tex_path;
-			stringStream << "prefilter_mip_";
-			stringStream << i;
-			std::string copyOfStr = stringStream.str();
-
+			std::ostringstream ss;
+			ss << tex_path;
+			ss << "prefilter_mip_";
+			ss << i;
+			ss << ".png";
 			cube_texture_t* pf_map = new cube_texture_t;
-			pf_map->load_tex(stringStream.str(), ".png", false);
+			pf_map->load_tex(ss.str(), false);
 			prefilter_maps.push_back(pf_map);
 		}
 

@@ -265,7 +265,10 @@ public:
 
 class cube_texture_t
 {
-	const std::string face_tags[6] = { "px", "nx", "pz", "nz", "ny", "py" };
+	const int base_xy[6][2] = {
+		{2, 1}, {0, 1}, {1, 2},
+		{1, 0}, {1, 1}, {3, 1}
+	};
 	texture2d_t faces[6];
 public:
 	cube_texture_t()
@@ -294,23 +297,29 @@ public:
 		return faces[face_id];
 	}
 
-	void load_tex(const std::string& tex_path, const std::string& ext_name, bool is_srgb)
+	void load_tex(const std::string& tex_path, bool is_srgb)
 	{
-		for (int i = 0; i < 6; ++i) {
-			std::string path = tex_path + "_" + face_tags[i] + ext_name;
-			faces[i].load_tex(path.c_str(), is_srgb);
+		int w = 0, h = 0;
+		vector4_t *texture = load_tex_impl(tex_path.c_str(), w, h, is_srgb);
+		assert(w * 3 == h * 4);
+		int siz = w / 4;
+		assert(w == siz * 4);
+
+		for (int k = 0; k < 6; ++k) {
+			faces[k].init(siz, siz);
+			int bx = base_xy[k][0] * siz;
+			int by = base_xy[k][1] * siz;
+			for (int i = 0; i < siz; ++i) {
+				for (int j = 0; j < siz; ++j) {
+					int idx = (i + by) * w + (j + bx);
+					faces[k].write_at(j, i, texture[idx]);
+				}
+			}
 		}
+		delete[] texture;
 	}
 
 	void save_tex(const std::string& tex_path, bool is_srgb)
-	{
-		for (int i = 0; i < 6; ++i) {
-			std::string path = tex_path + "_" + face_tags[i] + ".png";
-			faces[i].save_tex(path.c_str(), is_srgb);
-		}
-	}
-
-	void save_as_fold(const std::string& tex_path, bool is_srgb)
 	{
 		int siz = this->size();
 		int w = siz * 4;
@@ -320,10 +329,6 @@ public:
 			data[i] = 0xFFFFFFFF;
 		}
 
-		const int base_xy[6][2] = {
-			 {2, 1}, {0, 1}, {1, 2},
-			 {1, 0}, {1, 1}, {3, 1}
-		};
 		for (int k = 0; k < 6; ++k)	{
 			int bx = base_xy[k][0] * siz;
 			int by = base_xy[k][1] * siz;

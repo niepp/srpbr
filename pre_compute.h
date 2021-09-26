@@ -72,7 +72,7 @@ vector3_t hemisphere_sample_uniform(float u, float v)
 void generate_irradiance_map(const std::string& src_texpath, const std::string& dst_texpath)
 {
 	cube_texture_t src_cube_tex;
-	src_cube_tex.load_tex(src_texpath, ".png", true);
+	src_cube_tex.load_tex(src_texpath, false);
 	
 	int siz = src_cube_tex.size();
 	cube_texture_t dst_cube_tex(siz);
@@ -136,10 +136,9 @@ void generate_irradiance_map(const std::string& src_texpath, const std::string& 
 		future.get();
 	}
 
-	dst_cube_tex.save_tex(dst_texpath, true);
+	dst_cube_tex.save_tex(dst_texpath, false);
 
 }
-
 
 vector4_t importance_sample_GGX(float e1, float e2, const vector3_t& n, float roughness)
 {
@@ -166,7 +165,7 @@ vector4_t importance_sample_GGX(float e1, float e2, const vector3_t& n, float ro
 void generate_prefilter_envmap(const std::string& src_texpath, const std::string& dst_texpath)
 {
 	cube_texture_t src_cube_tex;
-	src_cube_tex.load_tex(src_texpath, ".png", true);
+	src_cube_tex.load_tex(src_texpath, false);
 
 	auto face_filter_func = [&](float roughness, int siz, texture2d_t& face, int face_id) {
 		for (int i = 0; i < siz; ++i)
@@ -248,7 +247,7 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 			future.get();
 		}
 
-		dst_cube_tex.save_tex(dst_texpath + "_mip_" + std::to_string(i), true);
+		dst_cube_tex.save_tex(dst_texpath + "_mip_" + std::to_string(i), false);
 
 	}
 
