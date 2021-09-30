@@ -49,29 +49,31 @@ public:
 		}
 
 		/* brdf lookup texture */
-		std::string lut_path = tex_path + "brdf_lut.png";
+		std::string lut_path = "./resource/brdf_lut.png";
 		brdf_lut->load_tex(lut_path.c_str(), false);
 
 	}
 
 	vector3_t calc_lighting(const pbr_param_t& pbr_param, const vector3_t& albedo)
 	{
-		vector3_t ks = F_fresenl_schlick_roughness(pbr_param.NoV, pbr_param.f0, pbr_param.roughness);
-		vector3_t kd = vector3_t::one() - ks;
+		vector3_t F = F_fresenl_schlick_roughness(pbr_param.NoV, pbr_param.f0, pbr_param.roughness);
+		vector3_t ks = F;
+		vector3_t kd = (vector3_t::one() - ks) * (1.0f - pbr_param.metallic);
 		vector3_t irradiance = irradiance_map->sample(pbr_param.n).to_vec3();
+		vector3_t diffuse = irradiance * albedo;
 
-		//
-		vector3_t r = reflect(pbr_param.n, pbr_param.v);
+		vector3_t r = reflect(pbr_param.n, pbr_param.v);		
 		r.normalize();
+
 		vector3_t prefiltered_part = sample_trilinear(r, pbr_param.roughness);
 
 		texcoord_t lut_uv(pbr_param.NoV, pbr_param.roughness);
 
 		vector3_t envBRDF = brdf_lut->sample(lut_uv).to_vec3();
 
-		vector3_t specular = prefiltered_part * (pbr_param.f0 * envBRDF.x + vector3_t::one() * envBRDF.y);
+		vector3_t specular = prefiltered_part * (F * envBRDF.x + vector3_t::one() * envBRDF.y);
 
-		return kd * irradiance * albedo + ks * specular;
+		return kd * diffuse + ks * specular;
 	}
 
 private:

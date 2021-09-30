@@ -162,6 +162,7 @@ vector4_t importance_sample_GGX(float e1, float e2, const vector3_t& n, float ro
 
 }
 
+// reference to "Real Shading in Unreal Engine 4. by Brian Karis, Epic Games"
 void generate_prefilter_envmap(const std::string& src_texpath, const std::string& dst_texpath)
 {
 	cube_texture_t src_cube_tex;
@@ -188,8 +189,7 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 				vector3_t tan_y = cross(n, tan_x);
 				tan_y.normalize();
 
-				vector3_t r = n;
-				vector3_t v = r;
+				vector3_t v = n; // suppose that v and n both are same to r!
 
 				vector3_t filtered_color(0, 0, 0);
 				float weight = 0;
@@ -213,7 +213,7 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 					if (NoL > 0)
 					{
 						vector3_t color = src_cube_tex.sample(l).to_vec3();
-						filtered_color += color * NoL;
+						filtered_color += color * NoL; // here the weight NoL is not present in Equation
 						weight += NoL;
 					}
 				}
@@ -247,7 +247,8 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 			future.get();
 		}
 
-		dst_cube_tex.save_tex(dst_texpath + "_mip_" + std::to_string(i), false);
+		const char* ext = ::strrchr(src_texpath.c_str(), '.');
+		dst_cube_tex.save_tex(dst_texpath + "_mip_" + std::to_string(i) + ext, false);
 
 	}
 

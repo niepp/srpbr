@@ -397,16 +397,6 @@ struct matrix_t
 		m[3][0] = m[3][1] = m[3][2] = 0.0f;
 	}
 
-	vector3_t operator *(const vector3_t& vec) const
-	{
-		vector3_t ret;
-		float X = vec.x, Y = vec.y, Z = vec.z;
-		ret.x = X * m[0][0] + Y * m[1][0] + Z * m[2][0];
-		ret.y = X * m[0][1] + Y * m[1][1] + Z * m[2][1];
-		ret.z = X * m[0][2] + Y * m[1][2] + Z * m[2][2];
-		return ret;
-	}
-
 	vector4_t operator *(const vector4_t& vec) const
 	{
 		vector4_t ret;
@@ -416,6 +406,18 @@ struct matrix_t
 		ret.z = X * m[0][2] + Y * m[1][2] + Z * m[2][2] + W * m[3][2];
 		ret.w = X * m[0][3] + Y * m[1][3] + Z * m[2][3] + W * m[3][3];
 		return ret;
+	}
+
+	vector3_t mul_point(const vector3_t& vec) const
+	{
+		vector4_t ret = (*this) * (vector4_t(vec, 1.0f));
+		return ret.to_vec3();
+	}
+
+	vector3_t mul_vector(const vector3_t& vec) const
+	{
+		vector4_t ret = (*this) * (vector4_t(vec, 0.0f));
+		return ret.to_vec3();
 	}
 
 	void set_identity()
@@ -729,7 +731,7 @@ interp_vertex_t lerp( const interp_vertex_t& a, const interp_vertex_t& b, float 
 
 vector3_t reflect(const vector3_t& n, const vector3_t& l)
 {
-	vector3_t r = n * 2.0f * dot(n, l) - l;
+	vector3_t r = n * 2.0f * dot(n, l) - l;	
 	return r;
 }
 

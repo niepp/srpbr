@@ -51,7 +51,8 @@ enum class cull_mode_t {
 bool has_spec = true;
 bool has_indirect_light = true;
 
-float float_control_roughness = 1.0f;
+float float_control_roughness = 0.0f;
+float float_control_metallic = 1.0f;
 
 float reci_freq;
 int64_t tick_start;
@@ -194,6 +195,9 @@ void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 }
 
+
+float max_u = -10.0f;
+
 void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 {
 	texcoord_t uv = p.uv;
@@ -222,6 +226,7 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	pbr_param.v.normalize();
 
 	pbr_param.l = -uniformbuffer.light_dir;
+	pbr_param.l.normalize();
 
 	// (v + l) / 2
 	pbr_param.h = pbr_param.v + pbr_param.l;
@@ -236,10 +241,11 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	pbr_param.roughness = roughness_texel.r;
 
 	pbr_param.roughness *= float_control_roughness;
-	pbr_param.roughness = clamp(pbr_param.roughness, 0.0001f, 1.0f); // roughness为0，对应着完全的反射，对于非面积光源，会产生无穷大的反射值（能量全部集中到了面积为0的一点上）
+	pbr_param.metallic *= float_control_metallic;
+
+	pbr_param.roughness = clamp(pbr_param.roughness, 0.02f, 1.0f); // roughness为0，对应着完全的反射，对于非面积光源，会产生无穷大的反射值（能量全部集中到了面积为0的一点上）
 
 	float a = pbr_param.roughness * pbr_param.roughness;
-	float a2 = a * a;
 
 	// F：菲涅尔系数，是光线发生反射与折射的比例，当光线垂直进入表面时的菲涅尔系数记为F0，F0是可以实际测量出来的
 	// 不同的材质，这个F0是不同的，F0越大，感觉是越明亮，金属材质通常F0比较大，而且是有颜色的（不同频率的光，对应菲涅尔系数不同），非金属材质最低也有一点点反射，就取(0.04, 0.04, 0.04)，
@@ -249,12 +255,19 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	vector3_t F = F_fresenl_schlick(pbr_param.HoV, pbr_param.f0);
 
-	float D = D_Trowbridge_Reitz_GGX(a2, pbr_param.NoH);
+	float D = D_Trowbridge_Reitz_GGX(a, pbr_param.NoH);
 
 	float V = V_Schlick_GGX(a, pbr_param.NoV, pbr_param.NoL);
 
+
+	float nov = dot(pbr_param.n, pbr_param.v);
+
+	if (nov < 0.5f) {
+		V = FLT_MAX *2;
+	}
+
 	if (!is_valid(V)) {
-		int kkk = 0;
+		assert(0);
 	}
 
 	vector3_t cook_torrance_brdf = F * D * V;
@@ -338,6 +351,24 @@ void scan_horizontal(const interp_vertex_t& vl, const interp_vertex_t& vr, int y
 		if (abs(p.pos.w) < cEpslion)
 		{
 			p.pos.w = 1.0f;
+		}
+
+		{
+			vector3_t n = p.nor / p.pos.w;
+			n.normalize();
+
+			vector3_t wpos = p.wpos / p.pos.w;
+
+			vector3_t v = uniformbuffer.eye - wpos;
+			v.normalize();
+
+			float nov = dot(n, v);
+			if (shading_model == shading_model_t::eSM_PBR) {
+				if (nov < 0)
+				{
+			//		continue;
+				}
+			}
 		}
 
 		if (depth_test(i, y, p.pos.z)) {
@@ -430,8 +461,8 @@ void to_screen_coord(vector4_t* p)
 void vertex_process(const matrix_t& world, const matrix_t& mvp, const model_vertex_t& v, interp_vertex_t& p)
 {
 	p.pos = mvp * vector4_t(v.pos, 1.0f);
-	p.wpos = world * v.pos;
-	p.nor = world * v.nor; // suppose world contain NO no-uniform scale!
+	p.wpos = world.mul_point(v.pos);
+	p.nor = world.mul_vector(v.nor); // suppose world contain NO no-uniform scale!
 	p.color = v.color;
 	p.uv = v.uv;
 	perspective_divide(&p);
@@ -600,13 +631,13 @@ void render_model(model_t *model)
 		vector4_t v01 = vb_post[i1].pos - vb_post[i0].pos;
 		vector4_t v02 = vb_post[i2].pos - vb_post[i0].pos;
 
-		float det_xy = v01.x * v02.y - v01.y * v02.x;
-		if (cull_mode == cull_mode_t::eCM_CW && det_xy >= 0.0f) {
-			continue; // backface culling
-		}
-		else if (cull_mode == cull_mode_t::eCM_CCW && det_xy < 0.0f) {
-			continue; // forward face culling
-		}
+		//float det_xy = v01.x * v02.y - v01.y * v02.x;
+		//if (cull_mode == cull_mode_t::eCM_CW && det_xy >= 0.0f) {
+		//	continue; // backface culling
+		//}
+		//else if (cull_mode == cull_mode_t::eCM_CCW && det_xy < 0.0f) {
+		//	continue; // forward face culling
+		//}
 
 		interp_vertex_t* p0 = &vb_post[i0];
 		interp_vertex_t* p1 = &vb_post[i1];
@@ -641,13 +672,13 @@ void render_scene()
 		zbuffer[i] = FLT_MAX;
 	}
 
-//	view_angle += cPI / 128.0f;
+	view_angle += cPI / 128.0f;
 
 	matrix_t mrot;
 	mrot.set_rotate(0, 0, 1, view_angle);
 
-	uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
-	uniformbuffer.eye = mrot * uniformbuffer.eye;
+	uniformbuffer.eye.set(0.0f, eyedist, 0.5f);
+	uniformbuffer.eye = mrot.mul_point(uniformbuffer.eye);
 
 	vector3_t at(0.0f, 0.0f, 0.0f);
 	vector3_t up(0.0f, 0.0f, 1.0f); // z axis
@@ -670,6 +701,7 @@ void render_scene()
 	shading_model = old_sm;
 
 	mscale.set_scale(1.6f, 1.6f, 1.6f);
+	mscale.set_scale(1.0f, 1.0f, 1.0f);
 	uniformbuffer.world = mul(mscale, mrot);
 	uniformbuffer.world.set_translate(0, 0, -0.8f);
 	uniformbuffer.mvp = mul(uniformbuffer.world, vp);
@@ -763,7 +795,7 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CREATE:
 		break;
 	case WM_KEYDOWN:
-		switch (wParam & 511)
+		switch (wParam & 0x1FF)
 		{
 		case 'C':
 			shading_model = (shading_model_t)((int)shading_model + 1);
@@ -803,7 +835,6 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		case VK_NEXT:
 			eyedist += 0.1f;
 			break;
-
 		case 'R':
 			float_control_roughness += 0.02f;
 			float_control_roughness = clamp(float_control_roughness, 0.0f, 2.0f);
@@ -815,7 +846,7 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			std::cout << float_control_roughness << std::endl;
 			break;
 		case 'P':
-			save_framebuffer("./result/framebuffer.png");
+			save_framebuffer("./result/framebuffer_" + std::to_string(get_now_ms()) + ".png");
 			break;
 		default:
 			break;
@@ -871,15 +902,20 @@ HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
 int main(void)
 {
 
-	generate_irradiance_map("./resource/ibl_textures/env", "./resource/ibl_textures/irradiance");
+	//cube_texture_t raw;
+	//raw.load_tex("F:/work_render/srpbr/EpicQuadPanorama/epic", ".png", true);
+	//raw.save_tex("F:/work_render/srpbr/EpicQuadPanorama/epic.png", true);
+	//return 0;
 
-	generate_prefilter_envmap("./resource/ibl_textures/env", "./resource/ibl_textures/prefilter");
 
-	return 0;
+	//generate_irradiance_map("./resource/epicquad/env.png", "./resource/epicquad/irradiance.png");
+	//generate_prefilter_envmap("./resource/epicquad/env.png", "./resource/epicquad/prefilter");
+	//
+	//return 0;
 
 
-	width = 800;
-	height = 600;
+	width = 1024;
+	height = 768;
 	hwnd = init_window(GetModuleHandle(NULL), _T(""), width, height);
 
 	screenDC = CreateCompatibleDC(GetDC(hwnd));
@@ -905,16 +941,16 @@ int main(void)
 		zbuffer[i] = FLT_MAX;
 	}
 
-	env_map.load_tex("./resource/ibl_textures/env.png", true);
+	env_map.load_tex("./resource/epicquad/env.png", true);
 
-	ibl.load("./resource/ibl_textures/");
+	ibl.load("./resource/epicquad/");
 
 	albedo_tex.load_tex("./resource/rustediron2_basecolor.png", true);
 	metallic_tex.load_tex("./resource/rustediron2_metallic.png", true);
 	roughness_tex.load_tex("./resource/rustediron2_roughness.png", true);
 	normal_tex.load_tex("./resource/rustediron2_normal.png", false);
 
-	uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
+	uniformbuffer.eye.set(0.0f, eyedist, 0.2f);
 	uniformbuffer.light_dir.set(0.0f, -1.0f, 0.0f);
 	uniformbuffer.light_intensity.set(1.0f, 1.0f, 1.0f);
 	uniformbuffer.specular_power = 8.0f;
@@ -924,13 +960,25 @@ int main(void)
 
 	sphere_model.load("./resource/mesh_sphere.obj");
 
-	update_light();
+	int num = 5;
+	//for (int i = 0; i < num; ++i)
+	//{
+	//	float_control_metallic = 1.0f * i / (num - 1.0f);
+	//	for (int j = 0; j < num; ++j)
+	//	{
+	//		float_control_roughness = 1.0f * j / (num - 1.0f);
+	//		update_light();
+	//		render_scene();
+	//		char buf[MAX_PATH] = {0};
+	//		sprintf(buf, "./experiment/pbr_roughness[%.2f]_metallic[%.2f].png", float_control_roughness, float_control_metallic);
+	//		save_framebuffer(buf);
+	//	}
+	//}
 
-	render_scene();
+	//render_scene();
+	//save_framebuffer("./result/framebuffer_" + std::to_string(get_now_ms()) + ".png");
 
-	save_framebuffer("./result/framebuffer_" + std::to_string(get_now_ms()) + ".png");
-
-//	main_loop();
+	main_loop();
 
 	return 0;
 

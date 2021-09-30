@@ -297,6 +297,15 @@ public:
 		return faces[face_id];
 	}
 
+	void load_tex(const std::string& tex_path, const std::string& ext_name, bool is_srgb)
+	{
+		const std::string face_tags[6] = { "px", "nx", "pz", "nz", "ny", "py" };
+		for (int i = 0; i < 6; ++i) {
+			std::string path = tex_path + "_" + face_tags[i] + ext_name;
+			faces[i].load_tex(path.c_str(), is_srgb);
+		}
+	}
+
 	void load_tex(const std::string& tex_path, bool is_srgb)
 	{
 		int w = 0, h = 0;
