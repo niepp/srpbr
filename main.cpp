@@ -22,9 +22,9 @@
   \        /
    \      /
     \    /
-	 \  /
-	  \/
-	   p
+     \  /
+      \/
+       p
 */
 struct scan_tri_t
 {
@@ -62,7 +62,7 @@ HDC screenDC;
 
 int width = 0, height = 0;
 float view_angle = 0.0f;
-vector3_t light_angle(cPI, cPI/2.0f, 0);
+vector3_t light_angle(cPI, cPI / 2.0f, 0);
 float eyedist = 1.5f;
 
 struct uniformbuffer_t
@@ -78,8 +78,8 @@ struct uniformbuffer_t
 };
 
 uniformbuffer_t uniformbuffer;
-uint32_t *framebuffer = nullptr;
-float *zbuffer = nullptr;
+uint32_t* framebuffer = nullptr;
+float* zbuffer = nullptr;
 
 texture2d_t albedo_tex;
 texture2d_t metallic_tex;
@@ -195,9 +195,6 @@ void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 }
 
-
-float max_u = -10.0f;
-
 void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 {
 	texcoord_t uv = p.uv;
@@ -226,7 +223,6 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	pbr_param.v.normalize();
 
 	pbr_param.l = -uniformbuffer.light_dir;
-	pbr_param.l.normalize();
 
 	// (v + l) / 2
 	pbr_param.h = pbr_param.v + pbr_param.l;
@@ -258,13 +254,6 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	float D = D_Trowbridge_Reitz_GGX(a, pbr_param.NoH);
 
 	float V = V_Schlick_GGX(a, pbr_param.NoV, pbr_param.NoL);
-
-
-	float nov = dot(pbr_param.n, pbr_param.v);
-
-	if (nov < 0.5f) {
-		V = FLT_MAX *2;
-	}
 
 	if (!is_valid(V)) {
 		assert(0);
@@ -314,13 +303,13 @@ void pixel_process(int x, int y, const interp_vertex_t& p)
 		pbr_shading(p, color);
 		break;
 	case shading_model_t::eSM_Skybox:
-		{
-			vector3_t n = p.nor / p.pos.w;
-			n.normalize();
-			vector3_t radiance = env_map.sample(n).to_vec3();
-			color = gamma_correction(radiance);
-		}
-		break;
+	{
+		vector3_t n = p.nor / p.pos.w;
+		n.normalize();
+		vector3_t radiance = env_map.sample(n).to_vec3();
+		color = gamma_correction(radiance);
+	}
+	break;
 	default:
 		break;
 	}
@@ -353,31 +342,13 @@ void scan_horizontal(const interp_vertex_t& vl, const interp_vertex_t& vr, int y
 			p.pos.w = 1.0f;
 		}
 
-		{
-			vector3_t n = p.nor / p.pos.w;
-			n.normalize();
-
-			vector3_t wpos = p.wpos / p.pos.w;
-
-			vector3_t v = uniformbuffer.eye - wpos;
-			v.normalize();
-
-			float nov = dot(n, v);
-			if (shading_model == shading_model_t::eSM_PBR) {
-				if (nov < 0)
-				{
-			//		continue;
-				}
-			}
-		}
-
 		if (depth_test(i, y, p.pos.z)) {
 			pixel_process(i, y, p);
 		}
 	}
 }
 
-void scan_triangle(scan_tri_t *sctri)
+void scan_triangle(scan_tri_t* sctri)
 {
 	if (sctri->l.pos.x > sctri->r.pos.x) {
 		std::swap(sctri->l, sctri->r);
@@ -524,7 +495,7 @@ void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c)
 	float dy = std::abs(v0.y - v1.y);
 
 	if (dy <= dx)
-	{	
+	{
 		if (v0.x > v1.x) {
 			std::swap(v0, v1);
 		}
@@ -562,7 +533,7 @@ void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c)
 		if (ix >= 0 && ix < width) {
 			write_pixel(ix, ymin, c);
 		}
-		
+
 		if (ymax > ymin) {
 			float delta = (v1.x - v0.x) / dy;
 			for (int y = ymin; y < ymax; ++y)
@@ -610,7 +581,7 @@ void draw_cartesian_coordinate(const matrix_t& mvp)
 	draw_line(to, tz, 0xff0000ff);
 }
 
-void render_model(model_t *model)
+void render_model(model_t* model)
 {
 	model_vertex_vec_t& vb = model->m_model_vertex;
 	interp_vertex_vec_t& vb_post = model->m_vertex_post;
@@ -631,13 +602,13 @@ void render_model(model_t *model)
 		vector4_t v01 = vb_post[i1].pos - vb_post[i0].pos;
 		vector4_t v02 = vb_post[i2].pos - vb_post[i0].pos;
 
-		//float det_xy = v01.x * v02.y - v01.y * v02.x;
-		//if (cull_mode == cull_mode_t::eCM_CW && det_xy >= 0.0f) {
-		//	continue; // backface culling
-		//}
-		//else if (cull_mode == cull_mode_t::eCM_CCW && det_xy < 0.0f) {
-		//	continue; // forward face culling
-		//}
+		float det_xy = v01.x * v02.y - v01.y * v02.x;
+		if (cull_mode == cull_mode_t::eCM_CW && det_xy >= 0.0f) {
+			continue; // backface culling
+		}
+		else if (cull_mode == cull_mode_t::eCM_CCW && det_xy < 0.0f) {
+			continue; // forward face culling
+		}
 
 		interp_vertex_t* p0 = &vb_post[i0];
 		interp_vertex_t* p1 = &vb_post[i1];
@@ -662,7 +633,7 @@ void render_model(model_t *model)
 			draw_triangle(*p0, *p1, *p2);
 		}
 	}
-	
+
 }
 
 void render_scene()
@@ -672,12 +643,12 @@ void render_scene()
 		zbuffer[i] = FLT_MAX;
 	}
 
-	view_angle += cPI / 128.0f;
+//	view_angle += cPI / 128.0f;
 
 	matrix_t mrot;
 	mrot.set_rotate(0, 0, 1, view_angle);
 
-	uniformbuffer.eye.set(0.0f, eyedist, 0.5f);
+	uniformbuffer.eye.set(0.2f, eyedist, 0.2f);
 	uniformbuffer.eye = mrot.mul_point(uniformbuffer.eye);
 
 	vector3_t at(0.0f, 0.0f, 0.0f);
@@ -701,7 +672,6 @@ void render_scene()
 	shading_model = old_sm;
 
 	mscale.set_scale(1.6f, 1.6f, 1.6f);
-	mscale.set_scale(1.0f, 1.0f, 1.0f);
 	uniformbuffer.world = mul(mscale, mrot);
 	uniformbuffer.world.set_translate(0, 0, -0.8f);
 	uniformbuffer.mvp = mul(uniformbuffer.world, vp);
@@ -715,7 +685,7 @@ void render_scene()
 
 }
 
-void save_framebuffer(const std::string &fb_texpath)
+void save_framebuffer(const std::string& fb_texpath)
 {
 	unsigned int* data = new unsigned int[width * height];
 	for (int i = 0; i < height; ++i) {
@@ -751,7 +721,7 @@ void main_loop()
 		{
 			int64_t tick_now = 0;
 			::QueryPerformanceCounter((LARGE_INTEGER*)&tick_now);
-			float dt_ms = (tick_now - tick_start)* reci_freq;
+			float dt_ms = (tick_now - tick_start) * reci_freq;
 			if (++frame_count >= 90) // limit to fps 90
 			{
 				if (dt_ms < 1000.0f) {
@@ -914,8 +884,8 @@ int main(void)
 	//return 0;
 
 
-	width = 1024;
-	height = 768;
+	width = 800;
+	height = 600;
 	hwnd = init_window(GetModuleHandle(NULL), _T(""), width, height);
 
 	screenDC = CreateCompatibleDC(GetDC(hwnd));
@@ -941,9 +911,8 @@ int main(void)
 		zbuffer[i] = FLT_MAX;
 	}
 
-	env_map.load_tex("./resource/epicquad/env.png", true);
-
-	ibl.load("./resource/epicquad/");
+	env_map.load_tex("./resource/ibl_textures/env.png", true);
+	ibl.load("./resource/ibl_textures/");
 
 	albedo_tex.load_tex("./resource/rustediron2_basecolor.png", true);
 	metallic_tex.load_tex("./resource/rustediron2_metallic.png", true);
