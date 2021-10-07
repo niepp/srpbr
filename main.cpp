@@ -63,7 +63,8 @@ HDC screenDC;
 int width = 0, height = 0;
 float view_angle = 0.0f;
 vector3_t light_angle(cPI, cPI / 2.0f, 0);
-float eyedist = 1.5f;
+float eyedist = 6.5f;
+float fovy = cPI * 0.2f;
 
 struct uniformbuffer_t
 {
@@ -236,6 +237,7 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	pbr_param.metallic = metallic_texel.r;
 	pbr_param.roughness = roughness_texel.r;
 
+	//albedo.set(1.0f, 1.0f, 1.0f);
 	pbr_param.roughness *= float_control_roughness;
 	pbr_param.metallic *= float_control_metallic;
 
@@ -671,17 +673,29 @@ void render_scene()
 	render_model(&sphere_model);
 	shading_model = old_sm;
 
-	mscale.set_scale(1.6f, 1.6f, 1.6f);
-	uniformbuffer.world = mul(mscale, mrot);
-	uniformbuffer.world.set_translate(0, 0, -0.8f);
-	uniformbuffer.mvp = mul(uniformbuffer.world, vp);
-	cull_mode = cull_mode_t::eCM_CW;
-	render_model(&sphere_model);
-
+	//mscale.set_scale(1.6f, 1.6f, 1.6f);
+	//mrot.set_identity();
 	//uniformbuffer.world = mul(mscale, mrot);
-	//uniformbuffer.world.set_translate(0.6f, 0, -0.8f);
+	//uniformbuffer.world.set_translate(0, 0, -0.8f);
 	//uniformbuffer.mvp = mul(uniformbuffer.world, vp);
+	//cull_mode = cull_mode_t::eCM_CW;
 	//render_model(&sphere_model);
+
+	cull_mode = cull_mode_t::eCM_CW;
+	int mt_num = 5;
+	int rh_num = 10;
+	for (int i = 0; i < mt_num; ++i)
+	{
+		float_control_metallic = 1.0f * i / (mt_num - 1.0f);
+		for (int j = 0; j < rh_num; ++j)
+		{
+			float_control_roughness = 1.0f * j / (rh_num - 1.0f);
+			uniformbuffer.world.set_scale(0.5f, 0.5f, 0.5f);
+			uniformbuffer.world.set_translate((j - rh_num * 0.5f) * 0.5f + 0.25f, 0, (i - mt_num * 0.5f) * 0.5f - 0.25f);
+			uniformbuffer.mvp = mul(uniformbuffer.world, vp);
+			render_model(&sphere_model);
+		}
+	}
 
 }
 
@@ -884,8 +898,8 @@ int main(void)
 	//return 0;
 
 
-	width = 800;
-	height = 600;
+	width = 1600;
+	height = 1200;
 	hwnd = init_window(GetModuleHandle(NULL), _T(""), width, height);
 
 	screenDC = CreateCompatibleDC(GetDC(hwnd));
@@ -911,8 +925,8 @@ int main(void)
 		zbuffer[i] = FLT_MAX;
 	}
 
-	env_map.load_tex("./resource/ibl_textures/env.png", true);
-	ibl.load("./resource/ibl_textures/");
+	env_map.load_tex("./resource/epic_quad/env.png", true);
+	ibl.load("./resource/epic_quad/");
 
 	albedo_tex.load_tex("./resource/rustediron2_basecolor.png", true);
 	metallic_tex.load_tex("./resource/rustediron2_metallic.png", true);
@@ -925,27 +939,29 @@ int main(void)
 	uniformbuffer.specular_power = 8.0f;
 
 	float aspect = 1.0f * width / height;
-	uniformbuffer.proj.set_perspective(cPI * 0.5f, aspect, 0.1f, 500.0f);
+	uniformbuffer.proj.set_perspective(fovy, aspect, 0.1f, 500.0f);
 
 	sphere_model.load("./resource/mesh_sphere.obj");
 
-	int num = 5;
-	//for (int i = 0; i < num; ++i)
+	int mt_num = 5;
+	int rh_num = 10;
+	//for (int i = 0; i < mt_num; ++i)
 	//{
-	//	float_control_metallic = 1.0f * i / (num - 1.0f);
-	//	for (int j = 0; j < num; ++j)
+	//	float_control_metallic = 1.0f * i / (mt_num - 1.0f);
+	//	for (int j = 0; j < rh_num; ++j)
 	//	{
-	//		float_control_roughness = 1.0f * j / (num - 1.0f);
+	//		float_control_roughness = 1.0f * j / (rh_num - 1.0f);
 	//		update_light();
 	//		render_scene();
 	//		char buf[MAX_PATH] = {0};
-	//		sprintf(buf, "./experiment/pbr_roughness[%.2f]_metallic[%.2f].png", float_control_roughness, float_control_metallic);
+	//		sprintf(buf, "./experiment/pbr_metallic[%.2f]_roughness[%.2f].png", float_control_metallic, float_control_roughness);
 	//		save_framebuffer(buf);
 	//	}
 	//}
 
-	//render_scene();
-	//save_framebuffer("./result/framebuffer_" + std::to_string(get_now_ms()) + ".png");
+//	render_scene();
+//	save_framebuffer("./result/framebuffer.png");
+//	save_framebuffer("./result/framebuffer_" + std::to_string(get_now_ms()) + ".png");
 
 	main_loop();
 
