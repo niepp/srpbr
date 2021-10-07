@@ -73,7 +73,7 @@ public:
 
 		vector3_t specular = prefiltered_part * (F * envBRDF.x + vector3_t::one() * envBRDF.y);
 
-		return kd * diffuse + ks * specular;
+		return kd * diffuse + specular;
 	}
 
 private:

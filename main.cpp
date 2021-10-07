@@ -237,9 +237,9 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	pbr_param.metallic = metallic_texel.r;
 	pbr_param.roughness = roughness_texel.r;
 
-	//albedo.set(1.0f, 1.0f, 1.0f);
-	pbr_param.roughness *= float_control_roughness;
-	pbr_param.metallic *= float_control_metallic;
+	albedo.set(1.0f, 1.0f, 1.0f);
+	pbr_param.roughness = float_control_roughness;
+	pbr_param.metallic = float_control_metallic;
 
 	pbr_param.roughness = clamp(pbr_param.roughness, 0.02f, 1.0f); // roughness为0，对应着完全的反射，对于非面积光源，会产生无穷大的反射值（能量全部集中到了面积为0的一点上）
 
