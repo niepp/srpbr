@@ -147,6 +147,7 @@
     <ClInclude Include="math3d.h" />
     <ClInclude Include="model.h" />
     <ClInclude Include="pbr_common.h" />
+    <ClInclude Include="soft_renderer.h" />
     <ClInclude Include="stb_image.h" />
     <ClInclude Include="stb_image_write.h" />
     <ClInclude Include="texture.h" />

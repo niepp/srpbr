@@ -429,7 +429,7 @@ struct matrix_t
 		m[3][0] = m[3][1] = m[3][2] = 0.0f;
 	}
 
-	void set_translate(float x, float y, float z)
+	void apply_translate(float x, float y, float z)
 	{
 		m[3][0] = x;
 		m[3][1] = y;
