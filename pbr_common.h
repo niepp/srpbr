@@ -53,10 +53,11 @@ float D_Trowbridge_Reitz_GGX(float a, float NoH)
 
 // Tuned to match behavior of Vis_Smith
 // [Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"]
-float V_Schlick_GGX(float a, float NoV, float NoL)
+float V_Schlick_GGX(float roughness, float NoV, float NoL)
 {
 	// V = G / (NoL * NoV)
-	float k = a * 0.5f;
+	roughness = (roughness + 1.0f) / 2.0f; // for direct shading
+	float k = roughness * roughness * 0.5f;
 	float Vis_SchlickV = NoV * (1.0f - k) + k;
 	float Vis_SchlickL = NoL * (1.0f - k) + k;
 	return 0.25f / (Vis_SchlickV * Vis_SchlickL);

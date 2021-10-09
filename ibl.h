@@ -62,7 +62,7 @@ public:
 		vector3_t irradiance = irradiance_map->sample(pbr_param.n).to_vec3();
 		vector3_t diffuse = irradiance * albedo;
 
-		vector3_t r = reflect(pbr_param.n, pbr_param.v);		
+		vector3_t r = reflect(pbr_param.n, pbr_param.v);
 		r.normalize();
 
 		vector3_t prefiltered_part = sample_trilinear(r, pbr_param.roughness);

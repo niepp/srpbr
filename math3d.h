@@ -627,14 +627,12 @@ vector4_t to_color(unsigned int cint)
 // reference from "UE4 GammaCorrectionCommon.ush - sRGBToLinear"
 float srgb_to_linear(float c)
 {
-//	return c;
 	c = max(6.10352e-5f, c); // minimum positive non-denormal (fixes black problem on DX11 AMD and NV)
 	return c > 0.04045f ? pow(c * (1.0f / 1.055f) + 0.0521327f, 2.4f) : c * (1.0f / 12.92f);
 }
 
 float linear_to_srgb(float lin)
 {
-	//return lin;
 	if (lin < 0.00313067f) return lin * 12.92f;
 	return pow(lin, (1.0f / 2.4f)) * 1.055f - 0.055f;
 }

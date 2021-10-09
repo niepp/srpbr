@@ -49,7 +49,7 @@ enum class cull_mode_t {
 };
 
 bool has_spec = true;
-bool has_indirect_light = true;
+float indirect_light_intensity = 1.0f;
 
 float float_control_roughness = 0.0f;
 float float_control_metallic = 1.0f;
@@ -63,8 +63,8 @@ HDC screenDC;
 int width = 0, height = 0;
 float view_angle = 0.0f;
 vector3_t light_angle(cPI, cPI / 2.0f, 0);
-float eyedist = 6.5f;
-float fovy = cPI * 0.2f;
+float eyedist = 4.5f;
+float fovy = cPI * 0.5f;
 
 struct uniformbuffer_t
 {
@@ -95,7 +95,7 @@ cull_mode_t cull_mode = cull_mode_t::eCM_CW;
 
 model_t sphere_model;
 
-cube_texture_t env_map; // environment map
+cube_texture_t sky_env_map; // environment map
 
 template <typename T, int n>
 int array_size(T(&)[n])
@@ -169,11 +169,10 @@ void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	tangent_space_n = tangent_space_n * 2.0f - vector3_t::one();
 	tangent_space_n.normalize();
-	pbr_param.n = normal_mapping(vt_n, tangent_space_n);
-	pbr_param.n.normalize();
+	vector3_t n = normal_mapping(vt_n, tangent_space_n);
+	n.normalize();
 
-	float NoL = dot(pbr_param.n, l);
-	NoL = max(NoL, 0.15f);
+	float NoL = max(dot(n, l), 0.0f);
 
 	vector3_t diffuse = albedo.to_vec3() * uniformbuffer.light_intensity * NoL;
 
@@ -184,11 +183,11 @@ void phong_shading(const interp_vertex_t& p, vector4_t& out_color)
 	vector3_t h = v + l;
 	h.normalize();
 
-	float NoH = max(dot(pbr_param.n, h), 0.0f);
+	float NoH = max(dot(n, h), 0.0f);
 	vector3_t ks(0.5f, 0.5f, 0.5f);
 	vector3_t specular = ks * uniformbuffer.light_intensity * max(0.0f, pow(NoH, uniformbuffer.specular_power));
 
-	vector3_t radiance = diffuse + (has_spec ? specular : vector3_t());
+	vector3_t radiance = diffuse + specular;
 
 	vector3_t ldr = reinhard_mapping(radiance);
 
@@ -214,9 +213,8 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	tangent_space_n = tangent_space_n * 2.0f - vector3_t::one();
 	tangent_space_n.normalize();
-	//pbr_param.n = normal_mapping(vt_n, tangent_space_n);
-
-	pbr_param.n = vt_n;
+	pbr_param.n = normal_mapping(vt_n, tangent_space_n);
+//	pbr_param.n = vt_n;
 
 	pbr_param.n.normalize();
 
@@ -237,9 +235,9 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	pbr_param.metallic = metallic_texel.r;
 	pbr_param.roughness = roughness_texel.r;
 
-	albedo.set(1.0f, 1.0f, 1.0f);
-	pbr_param.roughness = float_control_roughness;
-	pbr_param.metallic = float_control_metallic;
+	//albedo.set(1.0f, 1.0f, 1.0f);
+	//pbr_param.roughness = float_control_roughness;
+	//pbr_param.metallic = float_control_metallic;
 
 	pbr_param.roughness = clamp(pbr_param.roughness, 0.02f, 1.0f); // roughness为0，对应着完全的反射，对于非面积光源，会产生无穷大的反射值（能量全部集中到了面积为0的一点上）
 
@@ -255,7 +253,7 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	float D = D_Trowbridge_Reitz_GGX(a, pbr_param.NoH);
 
-	float V = V_Schlick_GGX(a, pbr_param.NoV, pbr_param.NoL);
+	float V = V_Schlick_GGX(pbr_param.roughness, pbr_param.NoV, pbr_param.NoL);
 
 	if (!is_valid(V)) {
 		assert(0);
@@ -264,7 +262,7 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 	vector3_t cook_torrance_brdf = F * D * V;
 
 	//kd和ks分别是漫反射和镜面反射系数，表征了入射能量在镜面反射和漫反射之间进行分配，以满足能量守恒定律。 因此kd + ks < 1
-	//F代表了材质表面反射率，那么我们可以直接让ks = F，然后令kd = (1 - ks) * (1 - metalness)。这实际上是将入射能量在镜面反射和漫反射之间进行了分配，以满足能量守恒定律
+	//F代表了材质表面反射率，那么我们可以直接让ks = F，然后令kd = (1 - ks) * (1 - metallic)。这实际上是将入射能量在镜面反射和漫反射之间进行了分配，以满足能量守恒定律
 	vector3_t ks = F;
 	vector3_t kd = (vector3_t::one() - F) * (1.0f - pbr_param.metallic);
 
@@ -281,8 +279,7 @@ void pbr_shading(const interp_vertex_t& p, vector4_t& out_color)
 
 	vector3_t indirect_radiance = ibl.calc_lighting(pbr_param, albedo);
 
-	if (has_indirect_light)
-		radiance += indirect_radiance;
+	radiance += indirect_radiance * indirect_light_intensity;
 
 	vector3_t ldr = reinhard_mapping(radiance);
 
@@ -308,7 +305,7 @@ void pixel_process(int x, int y, const interp_vertex_t& p)
 	{
 		vector3_t n = p.nor / p.pos.w;
 		n.normalize();
-		vector3_t radiance = env_map.sample(n).to_vec3();
+		vector3_t radiance = sky_env_map.sample(n).to_vec3();
 		color = gamma_correction(radiance);
 	}
 	break;
@@ -673,29 +670,30 @@ void render_scene()
 	render_model(&sphere_model);
 	shading_model = old_sm;
 
-	//mscale.set_scale(1.6f, 1.6f, 1.6f);
-	//mrot.set_identity();
-	//uniformbuffer.world = mul(mscale, mrot);
-	//uniformbuffer.world.set_translate(0, 0, -0.8f);
-	//uniformbuffer.mvp = mul(uniformbuffer.world, vp);
-	//cull_mode = cull_mode_t::eCM_CW;
-	//render_model(&sphere_model);
-
+	mscale.set_scale(1.6f, 1.6f, 1.6f);
+	mrot.set_identity();
+	uniformbuffer.world = mul(mscale, mrot);
+	uniformbuffer.world.set_translate(0, 0, -0.8f);
+	uniformbuffer.mvp = mul(uniformbuffer.world, vp);
 	cull_mode = cull_mode_t::eCM_CW;
-	int mt_num = 5;
-	int rh_num = 10;
-	for (int i = 0; i < mt_num; ++i)
-	{
-		float_control_metallic = 1.0f * i / (mt_num - 1.0f);
-		for (int j = 0; j < rh_num; ++j)
-		{
-			float_control_roughness = 1.0f * j / (rh_num - 1.0f);
-			uniformbuffer.world.set_scale(0.5f, 0.5f, 0.5f);
-			uniformbuffer.world.set_translate((j - rh_num * 0.5f) * 0.5f + 0.25f, 0, (i - mt_num * 0.5f) * 0.5f - 0.25f);
-			uniformbuffer.mvp = mul(uniformbuffer.world, vp);
-			render_model(&sphere_model);
-		}
-	}
+	render_model(&sphere_model);
+
+
+	//cull_mode = cull_mode_t::eCM_CW;
+	//int mt_num = 5;
+	//int rh_num = 10;
+	//for (int i = 0; i < mt_num; ++i)
+	//{
+	//	float_control_metallic = 1.0f * i / (mt_num - 1.0f);
+	//	for (int j = 0; j < rh_num; ++j)
+	//	{
+	//		float_control_roughness = 1.0f * j / (rh_num - 1.0f);
+	//		uniformbuffer.world.set_scale(0.5f, 0.5f, 0.5f);
+	//		uniformbuffer.world.set_translate((j - rh_num * 0.5f) * 0.5f + 0.25f, 0, (i - mt_num * 0.5f) * 0.5f - 0.25f);
+	//		uniformbuffer.mvp = mul(uniformbuffer.world, vp);
+	//		render_model(&sphere_model);
+	//	}
+	//}
 
 }
 
@@ -795,7 +793,12 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 			has_spec = !has_spec;
 			break;
 		case 'I':
-			has_indirect_light = !has_indirect_light;
+			indirect_light_intensity += 0.05f;
+			std::cout << indirect_light_intensity << std::endl;
+			break;
+		case 'O':
+			indirect_light_intensity -= 0.05f;
+			std::cout << indirect_light_intensity << std::endl;
 			break;
 		case VK_UP:
 			light_angle.y += 0.1f;
@@ -885,18 +888,15 @@ HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
 
 int main(void)
 {
-
 	//cube_texture_t raw;
 	//raw.load_tex("F:/work_render/srpbr/EpicQuadPanorama/epic", ".png", true);
 	//raw.save_tex("F:/work_render/srpbr/EpicQuadPanorama/epic.png", true);
 	//return 0;
 
 
-	//generate_irradiance_map("./resource/epicquad/env.png", "./resource/epicquad/irradiance.png");
-	//generate_prefilter_envmap("./resource/epicquad/env.png", "./resource/epicquad/prefilter");
-	//
-	//return 0;
-
+	//generate_irradiance_map("./resource/ibl_textures/env.png", "./resource/ibl_textures/irradiance.png");
+	//generate_prefilter_envmap("./resource/ibl_textures/env.png", "./resource/ibl_textures/prefilter");
+	//generate_BRDF_LUT("./resource/brdf_lut.png");
 
 	width = 1600;
 	height = 1200;
@@ -925,7 +925,7 @@ int main(void)
 		zbuffer[i] = FLT_MAX;
 	}
 
-	env_map.load_tex("./resource/epic_quad/env.png", true);
+	sky_env_map.load_tex("./resource/epic_quad/env.png", true);
 	ibl.load("./resource/epic_quad/");
 
 	albedo_tex.load_tex("./resource/rustediron2_basecolor.png", true);

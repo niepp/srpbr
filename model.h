@@ -71,6 +71,7 @@ struct model_t
 			--p.iv;
 			--p.it;
 			--p.in;
+			assert(p.valid());
 		};
 
 		std::vector<vector3_t> verts;

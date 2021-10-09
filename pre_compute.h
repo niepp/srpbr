@@ -30,44 +30,19 @@ vector3_t hemisphere_sample_uniform(float u, float v)
 	return vector3_t(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
 }
 
-//vec2 IntegrateBRDF(float NdotV, float roughness)
-//{
-//	vec3 V;
-//	V.x = sqrt(1.0 - NdotV * NdotV);
-//	V.y = 0.0;
-//	V.z = NdotV;
-//
-//	float A = 0.0;
-//	float B = 0.0;
-//
-//	vec3 N = vec3(0.0, 0.0, 1.0);
-//
-//	const uint SAMPLE_COUNT = 1024u;
-//	for (uint i = 0u; i < SAMPLE_COUNT; ++i)
-//	{
-//		vec2 Xi = Hammersley(i, SAMPLE_COUNT);
-//		vec3 H = ImportanceSampleGGX(Xi, N, roughness);
-//		vec3 L = normalize(2.0 * dot(V, H) * H - V);
-//
-//		float NdotL = max(L.z, 0.0);
-//		float NdotH = max(H.z, 0.0);
-//		float VdotH = max(dot(V, H), 0.0);
-//
-//		if (NdotL > 0.0)
-//		{
-//			float G = GeometrySmith(N, V, L, roughness);
-//			//(DF/(4*NdotL*NdotV))/DPF
-//			float G_Vis = (G * VdotH) / (NdotH * NdotV); //DG/pdf的感觉
-//			float Fc = pow(1.0 - VdotH, 5.0);//是公式里的
-//
-//			A += (1.0 - Fc) * G_Vis;
-//			B += Fc * G_Vis;
-//		}
-//	}
-//	A /= float(SAMPLE_COUNT);
-//	B /= float(SAMPLE_COUNT);
-//	return vec2(A, B);
-//}
+
+// [ tan_x ]
+// | tan_y |
+// [ n     ]
+// makeup a rotation matrix
+void makeup_rot(const vector3_t& n, vector3_t& tan_x, vector3_t& tan_y)
+{
+	vector3_t up = fabs(n.z) < 0.999f ? vector3_t(0.0f, 0.0f, 1.0f) : vector3_t(1.0f, 0.0f, 0.0f);
+	tan_x = cross(up, n);
+	tan_x.normalize();
+	tan_y = cross(n, tan_x);
+	tan_y.normalize();
+}
 
 void generate_irradiance_map(const std::string& src_texpath, const std::string& dst_texpath)
 {
@@ -87,16 +62,9 @@ void generate_irradiance_map(const std::string& src_texpath, const std::string& 
 				tc.v = 1.0f * j / (siz - 1);
 				vector3_t n;
 				cube_uv_to_direction(face_id, tc, n);
-
-				// [ tan_x ]
-				// | tan_y |
-				// [ n     ]
-				// makeup a rotation matrix
-				vector3_t up = fabs(n.z) < 0.999f ? vector3_t(0.0f, 0.0f, 1.0f) : vector3_t(1.0f, 0.0f, 0.0f);
-				vector3_t tan_x = cross(up, n);
-				tan_x.normalize();
-				vector3_t tan_y = cross(n, tan_x);
-				tan_y.normalize();
+		
+				vector3_t tan_x, tan_y;
+				makeup_rot(n, tan_x, tan_y);
 
 				vector3_t irradiance(0, 0, 0);
 				const int sample_num = 100;
@@ -140,7 +108,7 @@ void generate_irradiance_map(const std::string& src_texpath, const std::string& 
 
 }
 
-vector4_t importance_sample_GGX(float e1, float e2, const vector3_t& n, float roughness)
+vector3_t importance_sample_GGX(float e1, float e2, const vector3_t& n, float roughness)
 {
 	float a = roughness * roughness;
 	float a2 = a * a;
@@ -154,11 +122,7 @@ vector4_t importance_sample_GGX(float e1, float e2, const vector3_t& n, float ro
 	h.y = sin_theta * sin(phi);
 	h.z = cos_theta;
 
-	float d = (cos_theta * a2 - cos_theta) * cos_theta + 1.0f;
-	float D = a2 / (cPI * d * d);
-	float PDF = D * cos_theta;
-
-	return vector4_t(h.x, h.y, h.z, PDF);
+	return vector3_t(h.x, h.y, h.z);
 
 }
 
@@ -179,15 +143,8 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 				vector3_t n;
 				cube_uv_to_direction(face_id, tc, n);
 
-				// [ tan_x ]
-				// | tan_y |
-				// [ n     ]
-				// makeup a rotation matrix
-				vector3_t up = fabs(n.z) < 0.999f ? vector3_t(0.0f, 0.0f, 1.0f) : vector3_t(1.0f, 0.0f, 0.0f);
-				vector3_t tan_x = cross(up, n);
-				tan_x.normalize();
-				vector3_t tan_y = cross(n, tan_x);
-				tan_y.normalize();
+				vector3_t tan_x, tan_y;
+				makeup_rot(n, tan_x, tan_y);
 
 				vector3_t v = n; // suppose that v and n both are same to r!
 
@@ -252,6 +209,83 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 
 	}
 
+}
+
+float schlickGGX_geometry_ibl(float n_dot_v, float roughness)
+{
+	float k = roughness * roughness / 2.0f;
+	return n_dot_v / (n_dot_v * (1 - k) + k);
+}
+
+float geometry_smith_ibl(float n_dot_v, float n_dot_l, float roughness)
+{
+	float g1 = schlickGGX_geometry_ibl(n_dot_v, roughness);
+	float g2 = schlickGGX_geometry_ibl(n_dot_l, roughness);
+	return g1 * g2;
+}
+
+vector3_t IntegrateBRDF(float NdotV, float roughness)
+{
+	vector3_t v;
+	v.x = sqrt(1.0f - NdotV * NdotV);
+	v.y = 0.0f;
+	v.z = NdotV;
+
+	float A = 0.0f;
+	float B = 0.0f;
+
+	vector3_t n(0.0f, 0.0f, 1.0f);
+	vector3_t tan_x, tan_y;
+	makeup_rot(n, tan_x, tan_y);
+
+	const int SAMPLE_COUNT = 1024;
+	for (int i = 0u; i < SAMPLE_COUNT; ++i)
+	{
+		float e1, e2;
+		hammersley(i, SAMPLE_COUNT, e1, e2);
+		vector3_t s = importance_sample_GGX(e1, e2, n, roughness);
+
+		// convert h to world space
+		vector3_t h = tan_x * s.x + tan_y * s.y + n * s.z;
+		h.normalize();
+
+		vector3_t l = reflect(h, v);
+		l.normalize();
+
+		float NoL = max(l.z, 0.0f);
+		float NoV = max(v.z, 0.0f);
+		float NoH = max(h.z, 0.0f);
+		float VoH = max(dot(v, h), 0.0f);
+
+		if (NoL > 0.0)
+		{
+			float G = geometry_smith_ibl(NoV, NoL, roughness);
+			float G_Vis = (G * VoH) / (NoH * NoV);
+			float Fc = pow(1.0f - VoH, 5.0f);
+			A += (1.0f - Fc) * G_Vis;
+			B += Fc * G_Vis;
+		}
+	}
+	A /= float(SAMPLE_COUNT);
+	B /= float(SAMPLE_COUNT);
+	return vector3_t(A, B, 0.0f);
+}
+
+void generate_BRDF_LUT(const std::string& dst_texpath, int siz = 256)
+{
+	texture2d_t lut;
+	lut.init(siz, siz);
+	for (int i = 0; i < siz; ++i)
+	{
+		float NoV = 1.0f * i / (siz - 1.0f);
+		for (int j = 0; j < siz; ++j)
+		{
+			float roughness = 1.0f * j / (siz - 1.0f);
+			vector3_t c = IntegrateBRDF(NoV, roughness);
+			lut.write_at(i, j, c);
+		}
+	}
+	lut.save_tex(dst_texpath.c_str(), false);
 }
 
 #endif // __PRE_COMPUTE_H__
