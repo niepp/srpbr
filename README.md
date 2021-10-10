@@ -1,6 +1,6 @@
 # **srpbr** is a simple software-renderer with pbr shading model, easy to understand, easy to debug.
 
-## Features</br>
+## features</br>
 
 1. pure c++ 11 implementation
 2. left-hand z-up coordinate system
@@ -10,6 +10,9 @@
 6. back culling / frustum culling / viewport scissor 
 7. support wavefront .obj file
 8. physically-based-shading with ibl
+9. bilinear / trilinear texture sample
+10. cube map sample
+11. reinhard toon-mapping
 
 
 ## ibl precompute
