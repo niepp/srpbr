@@ -104,7 +104,7 @@ public:
 
 		// setup perspective matrix
 		float aspect = 1.0f * width / height;
-		uniformbuffer.proj.set_perspective(fovy, aspect, 0.1f, 500.0f);
+		uniformbuffer.proj.set_perspective(fovy, aspect, 0.1f, 2000.0f);
 
 		// cache view X proj
 		uniformbuffer.viewproj = mul(uniformbuffer.view, uniformbuffer.proj);
@@ -279,10 +279,6 @@ void soft_renderer_t::pbr_shading(const interp_vertex_t& p, vector4_t& out_color
 	pbr_param.metallic = metallic_texel.r;
 	pbr_param.roughness = roughness_texel.r;
 
-	//albedo.set(1.0f, 1.0f, 1.0f);
-	//pbr_param.roughness = float_control_roughness;
-	//pbr_param.metallic = float_control_metallic;
-
 	pbr_param.roughness = clamp(pbr_param.roughness, 0.02f, 1.0f); // roughness为0，对应着完全的反射，对于非面积光源，会产生无穷大的反射值（能量全部集中到了面积为0的一点上）
 
 	float a = pbr_param.roughness * pbr_param.roughness;
@@ -372,14 +368,10 @@ void soft_renderer_t::scan_horizontal(const interp_vertex_t& vl, const interp_ve
 		w = clamp(w, 0.0f, 1.0f);
 		interp_vertex_t p = lerp(vl, vr, w);
 
-		if (p.pos.w < -0.1)
-		{
-			int kkk = 0;
-		}
-
-		if (abs(p.pos.w) < cEpslion)
+		if (p.pos.w < cEpslion)
 		{
 			p.pos.w = 1.0f;
+			std::cout << "p.pos.w = " << p.pos.w << std::endl;
 		}
 
 		if (depth_test(i, y, p.pos.z)) {
@@ -416,14 +408,13 @@ void soft_renderer_t::scan_triangle(scan_tri_t* sctri)
 		interp_vertex_t vr = lerp(sctri->r, sctri->p, w);
 		scan_horizontal(vl, vr, i);
 	}
-
 }
 
 bool soft_renderer_t::check_clip(const vector4_t* p, int width, int height)
 {
 	if (p->x < 0 || p->x >= width) return false;
 	if (p->y < 0 || p->y >= height) return false;
-	if (p->z < 0.0f || p->z > 1.0f + 0.2f) return false;
+	if (p->z < 0.0f || p->z > 1.0f) return false;
 	return true;
 }
 

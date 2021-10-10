@@ -28,10 +28,6 @@ vector3_t F_fresenl_schlick(float HoV, const vector3_t& f0)
 {
 	float e = pow(1.0f - HoV, 5.0f);
 	return f0 + (vector3_t::one() - f0) * e;
-
-	// Anything less than 2% is physically impossible and is instead considered to be shadowing
-	float f = clamp(50.0f * f0.y, 0.0f, 1.0f);
-	//return f0 + (vector3_t::one() * f - f0) * e;
 }
 
 vector3_t F_fresenl_schlick_roughness(float NoV, const vector3_t& f0, float roughness)

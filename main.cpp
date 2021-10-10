@@ -66,7 +66,7 @@ void render_scene(soft_renderer_t *soft_renderer)
 	world.apply_translate(0, 0, -0.8f);
 
 	soft_renderer->set_cull_mode(cull_mode_t::eCM_CW);
-//	soft_renderer->render_model(&sphere_model, world);
+	soft_renderer->render_model(&sphere_model, world);
 
 }
 
@@ -125,8 +125,8 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CREATE:
 		break;
 	case WM_KEYDOWN:
-		switch (wParam & 0x1FF)
-		{
+		//switch (wParam & 0x1FF)
+		//{
 		//case 'C':
 		//	shading_model = (shading_model_t)((int)shading_model + 1);
 		//	if (shading_model == shading_model_t::eSM_Skybox) {
@@ -136,17 +136,6 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		//		shading_model = shading_model_t::eSM_Color;
 		//	}
 		//	std::cout << (int)shading_model << std::endl;
-		//	break;
-		//case 'S':
-		//	has_spec = !has_spec;
-		//	break;
-		//case 'I':
-		//	indirect_light_intensity += 0.05f;
-		//	std::cout << indirect_light_intensity << std::endl;
-		//	break;
-		//case 'O':
-		//	indirect_light_intensity -= 0.05f;
-		//	std::cout << indirect_light_intensity << std::endl;
 		//	break;
 		//case VK_UP:
 		//	light_angle.y += 0.1f;
@@ -164,28 +153,12 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		//	light_angle.x += 0.1f;
 		//	update_light();
 		//	break;
-		//case VK_PRIOR:
-		//	eyedist -= 0.1f;
-		//	break;
-		//case VK_NEXT:
-		//	eyedist += 0.1f;
-		//	break;
-		//case 'R':
-		//	float_control_roughness += 0.02f;
-		//	float_control_roughness = clamp(float_control_roughness, 0.0f, 2.0f);
-		//	std::cout << float_control_roughness << std::endl;
-		//	break;
-		//case 'T':
-		//	float_control_roughness -= 0.02f;
-		//	float_control_roughness = clamp(float_control_roughness, 0.0f, 2.0f);
-		//	std::cout << float_control_roughness << std::endl;
-		//	break;
 		//case 'P':
 		//	save_framebuffer("./result/framebuffer_" + std::to_string(get_now_ms()) + ".png");
 		//	break;
 		//default:
 		//	break;
-		}
+		//}
 		break;
 	case WM_SIZE:
 	case WM_EXITSIZEMOVE:
@@ -236,10 +209,6 @@ HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
 
 int main(void)
 {
-	//generate_irradiance_map("./resource/ibl_textures/env.png", "./resource/ibl_textures/irradiance.png");
-	//generate_prefilter_envmap("./resource/ibl_textures/env.png", "./resource/ibl_textures/prefilter");
-	//generate_BRDF_LUT("./resource/brdf_lut.png");
-
 	hwnd = init_window(GetModuleHandle(NULL), _T(""), width, height);
 
 	screenDC = CreateCompatibleDC(GetDC(hwnd));
