@@ -51,4 +51,4 @@ generate ibl textures from an environment cubemap
 | ------------- |
 |![](https://github.com/niepp/srpbr/blob/main/images/standard%20pbr%20with%20ibl.png)|
 
-
+![](https://github.com/niepp/srpbr/blob/main/images/srpbr.gif)
