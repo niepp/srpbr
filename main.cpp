@@ -28,6 +28,9 @@ int width = 800;
 int height = 600;
 model_t sphere_model;
 float view_angle = 0;
+vector3_t eye_pos(0.4f, 4.5f, 0.25f);
+vector3_t light_angle(cPI, cPI / 2.0f, 0.0f);
+soft_renderer_t *soft_renderer = nullptr;
 
 template <typename T, int n>
 int array_size(T(&)[n])
@@ -42,11 +45,17 @@ inline long long get_now_ms()
 }
 
 
-void render_scene(soft_renderer_t *soft_renderer)
+void render_scene()
 {
 	soft_renderer->clear(true, true);
 
-	//view_angle += cPI / 128.0f;
+	view_angle += cPI / 128.0f;
+
+	matrix_t mrot;
+	mrot.set_rotate(0, 0, 1, view_angle);
+
+	vector3_t eye = mrot.mul_point(eye_pos);
+	soft_renderer->update_eye_position(eye);
 
 	soft_renderer->draw_cartesian_coordinate();
 
@@ -71,7 +80,7 @@ void render_scene(soft_renderer_t *soft_renderer)
 }
 
 
-void main_loop(soft_renderer_t* soft_renderer)
+void main_loop()
 {
 	// Show the window
 	::ShowWindow(hwnd, SW_SHOWDEFAULT);
@@ -108,7 +117,7 @@ void main_loop(soft_renderer_t* soft_renderer)
 				::SetWindowText(hwnd, str);
 			}
 
-			render_scene(soft_renderer);
+			render_scene();
 
 			HDC hDC = GetDC(hwnd);
 			BitBlt(hDC, 0, 0, width, height, screenDC, 0, 0, SRCCOPY);
@@ -125,40 +134,43 @@ LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	case WM_CREATE:
 		break;
 	case WM_KEYDOWN:
-		//switch (wParam & 0x1FF)
-		//{
-		//case 'C':
-		//	shading_model = (shading_model_t)((int)shading_model + 1);
-		//	if (shading_model == shading_model_t::eSM_Skybox) {
-		//		shading_model = (shading_model_t)((int)shading_model + 1);
-		//	}
-		//	if (shading_model == shading_model_t::eSM_MAX) {
-		//		shading_model = shading_model_t::eSM_Color;
-		//	}
-		//	std::cout << (int)shading_model << std::endl;
-		//	break;
-		//case VK_UP:
-		//	light_angle.y += 0.1f;
-		//	update_light();
-		//	break;
-		//case VK_DOWN:
-		//	light_angle.y -= 0.1f;
-		//	update_light();
-		//	break;
-		//case VK_LEFT:
-		//	light_angle.x -= 0.1f;
-		//	update_light();
-		//	break;
-		//case VK_RIGHT:
-		//	light_angle.x += 0.1f;
-		//	update_light();
-		//	break;
-		//case 'P':
-		//	save_framebuffer("./result/framebuffer_" + std::to_string(get_now_ms()) + ".png");
-		//	break;
-		//default:
-		//	break;
-		//}
+		switch (wParam & 0x1FF)
+		{
+		case 'C':
+		{
+			shading_model_t shading_model = (shading_model_t)((int)soft_renderer->get_shading_model() + 1);
+			if (shading_model == shading_model_t::eSM_Skybox) {
+				shading_model = (shading_model_t)((int)shading_model + 1);
+			}
+			if (shading_model == shading_model_t::eSM_MAX) {
+				shading_model = shading_model_t::eSM_Color;
+			}
+			soft_renderer->set_shading_model(shading_model);
+			std::cout << (int)shading_model << std::endl;
+		}
+			break;
+		case VK_UP:
+			light_angle.y += 0.1f;
+			soft_renderer->update_light(light_angle);
+			break;
+		case VK_DOWN:
+			light_angle.y -= 0.1f;
+			soft_renderer->update_light(light_angle);
+			break;
+		case VK_LEFT:
+			light_angle.x -= 0.1f;
+			soft_renderer->update_light(light_angle);
+			break;
+		case VK_RIGHT:
+			light_angle.x += 0.1f;
+			soft_renderer->update_light(light_angle);
+			break;
+		case 'P':
+			soft_renderer->save_framebuffer("./result/framebuffer_" + std::to_string(get_now_ms()) + ".png");
+			break;
+		default:
+			break;
+		}
 		break;
 	case WM_SIZE:
 	case WM_EXITSIZEMOVE:
@@ -232,10 +244,11 @@ int main(void)
 
 	sphere_model.load("./resource/mesh_sphere.obj");
 
-	soft_renderer_t soft_renderer(width, height, framebuffer);
+	soft_renderer = new soft_renderer_t(width, height, framebuffer, eye_pos);
 
-	main_loop(&soft_renderer);
+	main_loop();
 
+	delete soft_renderer;
 	return 0;
 
 }

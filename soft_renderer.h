@@ -64,35 +64,32 @@ private:
 	texture2d_t normal_tex;
 	cube_texture_t sky_env_map; // environment map
 
-	vector3_t light_angle;
 	float eyedist;
 	float fovy;
 
 public:
-	soft_renderer_t(int w, int h, uint32_t* fb) :
+	soft_renderer_t(int w, int h, uint32_t* fb, const vector3_t& eye, float infovy = cPI * 0.5f) :
 		width(w), height(h),
 		framebuffer(fb),
 		zbuffer(nullptr),
 		shading_model(shading_model_t::eSM_PBR),
 		cull_mode(cull_mode_t::eCM_CW),
-		light_angle(cPI, cPI / 2.0f, 0.0f),
-		eyedist(4.5f),
-		fovy(cPI * 0.5f)
+		fovy(infovy)
 	{
 		zbuffer = new float[width * height];
 		for (int i = 0; i < width * height; ++i) {
 			zbuffer[i] = FLT_MAX;
 		}
 
-		sky_env_map.load_tex("./resource/epic_quad/env.png", true);
-		ibl.load("./resource/epic_quad/");
+		sky_env_map.load_tex("./resource/ibl_textures/env.png", true);
+		ibl.load("./resource/ibl_textures/");
 
 		albedo_tex.load_tex("./resource/rustediron2_basecolor.png", true);
 		metallic_tex.load_tex("./resource/rustediron2_metallic.png", true);
 		roughness_tex.load_tex("./resource/rustediron2_roughness.png", true);
 		normal_tex.load_tex("./resource/rustediron2_normal.png", false);
 
-		uniformbuffer.eye.set(0.4f, eyedist, 0.25f);
+		uniformbuffer.eye = eye;
 		uniformbuffer.light_dir.set(0.0f, -1.0f, 0.0f);
 		uniformbuffer.light_intensity.set(1.0f, 1.0f, 1.0f);
 		uniformbuffer.specular_power = 8.0f;
@@ -127,7 +124,8 @@ public:
 
 	void clear(bool bclear_fb, bool bclear_zb);
 	void save_framebuffer(const std::string& fb_texpath);
-	void update_light();
+	void update_light(const vector3_t& light_angle);
+	void update_eye_position(const vector3_t& eye);
 	void render_model(model_t* model, const matrix_t &world);
 	void draw_cartesian_coordinate();
 
@@ -257,8 +255,8 @@ void soft_renderer_t::pbr_shading(const interp_vertex_t& p, vector4_t& out_color
 
 	tangent_space_n = tangent_space_n * 2.0f - vector3_t::one();
 	tangent_space_n.normalize();
-	pbr_param.n = normal_mapping(vt_n, tangent_space_n);
-	//	pbr_param.n = vt_n;
+//	pbr_param.n = normal_mapping(vt_n, tangent_space_n);
+	pbr_param.n = vt_n;
 
 	pbr_param.n.normalize();
 
@@ -641,14 +639,27 @@ void soft_renderer_t::save_framebuffer(const std::string& fb_texpath)
 	delete[] data;
 }
 
-void soft_renderer_t::update_light()
+void soft_renderer_t::update_light(const vector3_t& light_angle)
 {
-	light_angle.y = clamp(light_angle.y, 0.0f, cPI);
-	float cosw = cos(light_angle.y);
-	float sinw = sin(light_angle.y);
+	float angle_y = clamp(light_angle.y, 0.0f, cPI);
+	float cosw = cos(angle_y);
+	float sinw = sin(angle_y);
 	uniformbuffer.light_dir.x = sin(light_angle.x) * sinw;
 	uniformbuffer.light_dir.y = cos(light_angle.x) * sinw;
 	uniformbuffer.light_dir.z = cosw;
+}
+
+void soft_renderer_t::update_eye_position(const vector3_t& eye)
+{
+	uniformbuffer.eye = eye;
+
+	// setup view matrix
+	vector3_t at(0.0f, 0.0f, 0.0f);
+	vector3_t up(0.0f, 0.0f, 1.0f); // z axis
+	uniformbuffer.view.set_lookat(uniformbuffer.eye, at, up);
+
+	// cache view X proj
+	uniformbuffer.viewproj = mul(uniformbuffer.view, uniformbuffer.proj);
 }
 
 void soft_renderer_t::render_model(model_t* model, const matrix_t &world)
