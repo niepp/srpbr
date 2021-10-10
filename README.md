@@ -12,12 +12,13 @@ srpbr is a simple pure c++ 11 software-renderer with pbr shading model, easy to 
 ibl precompute
 generate ibl textures from an environment cubemap
 1. indirect diffuse lighting
-precompute indirect diffuse lighting stored in an irradiance map from a radiance map(environment cubemap) 
+    precompute indirect diffuse lighting stored in an irradiance map from a radiance map(environment cubemap) 
 2. indirect specular lighting
+```cpp
 generate_irradiance_map("./resource/ibl_textures/env.png", "./resource/ibl_textures/irradiance.png");
 generate_prefilter_envmap("./resource/ibl_textures/env.png", "./resource/ibl_textures/prefilter");
 generate_BRDF_LUT("./resource/brdf_lut.png");
-
+```
 
 |direct lighting only|
 | ------------- |
