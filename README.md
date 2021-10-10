@@ -24,21 +24,25 @@ generate_BRDF_LUT("./resource/brdf_lut.png");
 | Content Cell  | Content Cell  |
 | Content Cell  | Content Cell  |
 
-||direct lighting only||
-||![](https://github.com/niepp/srpbr/blob/main/images/direct%20lighting%20only.png)||
+|direct lighting only|
+| ------------- |
+|![](https://github.com/niepp/srpbr/blob/main/images/direct%20lighting%20only.png)|
 
 
-||with ibl||
-||![](https://github.com/niepp/srpbr/blob/main/images/constant%20color%20with%20ibl.png) ||
+|with ibl|
+| ------------- |
+|![](https://github.com/niepp/srpbr/blob/main/images/constant%20color%20with%20ibl.png)|
 
 
-||no indirect lighting||
-||![](https://github.com/niepp/srpbr/blob/main/images/no%20indirect%20lighting.png) ||
+|no indirect lighting|
+| ------------- |
+|![](https://github.com/niepp/srpbr/blob/main/images/no%20indirect%20lighting.png)|
 
-||no specular||
-||![](https://github.com/niepp/srpbr/blob/main/images/no%20specular.png) ||
+|no specular|
+| ------------- |
+|![](https://github.com/niepp/srpbr/blob/main/images/no%20specular.png)|
 
-||standard pbr with ibl||
-||![](https://github.com/niepp/srpbr/blob/main/images/standard%20pbr%20with%20ibl.png) ||
+|standard pbr with ibl|
+|![](https://github.com/niepp/srpbr/blob/main/images/standard%20pbr%20with%20ibl.png)|
 
 
