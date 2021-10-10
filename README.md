@@ -1,4 +1,4 @@
-# **srpbr** is a simple software-renderer implementation with pbr shading model, easy to understand, ease to debug.
+# **srpbr** is a simple software-renderer with pbr shading model, easy to understand, ease to debug.
 
 ## Features</br>
 
