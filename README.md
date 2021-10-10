@@ -12,13 +12,16 @@
 ## ibl precompute
 generate ibl textures from an environment cubemap
 1. indirect diffuse lighting
-    precompute indirect diffuse lighting stored in an irradiance map from a radiance map(environment cubemap) 
+    - precompute indirect diffuse lighting stored in an irradiance map from a radiance map(environment cubemap) 
+    ```cpp
+    generate_irradiance_map("./resource/ibl_textures/env.png", "./resource/ibl_textures/irradiance.png");
+    ```
 2. indirect specular lighting
-```cpp
-generate_irradiance_map("./resource/ibl_textures/env.png", "./resource/ibl_textures/irradiance.png");
-generate_prefilter_envmap("./resource/ibl_textures/env.png", "./resource/ibl_textures/prefilter");
-generate_BRDF_LUT("./resource/brdf_lut.png");
-```
+    - Split Sum Approximation, result in two part
+    ```cpp
+    generate_prefilter_envmap("./resource/ibl_textures/env.png", "./resource/ibl_textures/prefilter");
+    generate_BRDF_LUT("./resource/brdf_lut.png");
+    ```
 ## result
 |direct lighting only|
 | ------------- |
