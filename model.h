@@ -145,10 +145,12 @@ struct model_t
 		{
 			model_vertex_t &vtx = m_model_vertex[kv.second];
 			index_t idx = kv.first;
-			vtx.pos = verts[idx.iv] * 0.01f;   // ue4 obj's unit is centimeter, convert to meter		
+			vtx.pos = verts[idx.iv] * 0.01f;   // ue4 obj's unit is centimeter, convert to meter
 			vtx.uv = uvs[idx.it];
 			vtx.nor = norms[idx.in];
-			vtx.color.set(1, 1, 1);
+			vector3_t c = vtx.pos;
+			c.normalize();
+			vtx.color = c;
 			std::swap(vtx.pos.y, vtx.pos.z);   // obj file format is right-hand coordinate system
 			std::swap(vtx.nor.y, vtx.nor.z);   // obj file format is right-hand coordinate system
 		}

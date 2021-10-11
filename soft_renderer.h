@@ -20,8 +20,8 @@ struct scan_tri_t
 
 enum class shading_model_t
 {
-	eSM_Color = 0,
-	eSM_Wireframe,
+	eSM_Wireframe = 0,
+	eSM_Color,	
 	eSM_Phong,
 	eSM_PBR,
 	eSM_Skybox,
