@@ -221,6 +221,11 @@ HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
 
 int main(void)
 {
+	//generate_irradiance_map("./resource/ibl_textures/env.png", "./resource/ibl_textures/irradiance.png");
+	////generate_prefilter_envmap("./resource/ibl_textures/env.png", "./resource/ibl_textures/prefilter");
+	////generate_BRDF_LUT("./resource/brdf_lut.png");
+	//return 0;
+
 	hwnd = init_window(GetModuleHandle(NULL), _T(""), width, height);
 
 	screenDC = CreateCompatibleDC(GetDC(hwnd));

@@ -68,24 +68,25 @@ void generate_irradiance_map(const std::string& src_texpath, const std::string& 
 
 				vector3_t irradiance(0, 0, 0);
 
-				const int sample_num = 100;
-				for (int u = 0; u < sample_num; ++u)
+				const int sample_num = 8192;
+				for (int k = 0; k < sample_num; ++k)
 				{
-					for (int v = 0; v < sample_num; ++v)
-					{
-						// h is hemisphere direction in tangent space
-						vector3_t h = hemisphere_sample_uniform(1.0f * u / (sample_num - 1), 1.0f * v / (sample_num - 1));
+					float e1, e2;
+					hammersley(k, sample_num, e1, e2);
 
-						// convert h to world space
-						vector3_t l = tan_x * h.x + tan_y * h.y + n * h.z;
-						l.normalize();
-						vector3_t color = src_cube_tex.sample(l).to_vec3();
+					// h is hemisphere direction in tangent space
+					vector3_t h = hemisphere_sample_uniform(e1, e2);
 
-						float NoL = max(dot(n, l), 0);
-						irradiance += color * NoL;
-					}
+					// convert h to world space
+					vector3_t l = tan_x * h.x + tan_y * h.y + n * h.z;
+					l.normalize();
+					vector3_t color = src_cube_tex.sample(l).to_vec3();
+
+					float NoL = max(dot(n, l), 0);
+					irradiance += color * NoL;
+					
 				}
-				irradiance = irradiance * 2.0f / float(sample_num * sample_num);
+				irradiance = irradiance * 2.0f / float(sample_num);
 				face.write_at(i, j, irradiance);
 			}
 		}
@@ -151,10 +152,10 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 				float weight = 0;
 
 				const int sample_num = 1024;
-				for (int i = 0; i < sample_num; ++i)
+				for (int k = 0; k < sample_num; ++k)
 				{
 					float e1, e2;
-					hammersley(i, sample_num, e1, e2);
+					hammersley(k, sample_num, e1, e2);
 
 					vector3_t s = importance_sample_GGX(e1, e2, roughness);
 
