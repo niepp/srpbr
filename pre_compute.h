@@ -48,7 +48,7 @@ void generate_irradiance_map(const std::string& src_texpath, const std::string& 
 {
 	cube_texture_t src_cube_tex;
 	src_cube_tex.load_tex(src_texpath, false);
-	
+
 	int siz = src_cube_tex.size();
 	cube_texture_t dst_cube_tex(siz);
 
@@ -62,11 +62,12 @@ void generate_irradiance_map(const std::string& src_texpath, const std::string& 
 				tc.v = 1.0f * j / (siz - 1);
 				vector3_t n;
 				cube_uv_to_direction(face_id, tc, n);
-		
+
 				vector3_t tan_x, tan_y;
 				makeup_rot(n, tan_x, tan_y);
 
 				vector3_t irradiance(0, 0, 0);
+
 				const int sample_num = 100;
 				for (int u = 0; u < sample_num; ++u)
 				{
@@ -76,17 +77,15 @@ void generate_irradiance_map(const std::string& src_texpath, const std::string& 
 						vector3_t h = hemisphere_sample_uniform(1.0f * u / (sample_num - 1), 1.0f * v / (sample_num - 1));
 
 						// convert h to world space
-						vector3_t sample_dir = tan_x * h.x + tan_y * h.y + n * h.z;
-						sample_dir.normalize();
-						vector3_t color = src_cube_tex.sample(sample_dir).to_vec3();
+						vector3_t l = tan_x * h.x + tan_y * h.y + n * h.z;
+						l.normalize();
+						vector3_t color = src_cube_tex.sample(l).to_vec3();
 
-						float n_dot_l = max(dot(sample_dir, n), 0);
-						irradiance += color * n_dot_l;
-
+						float NoL = max(dot(n, l), 0);
+						irradiance += color * NoL;
 					}
 				}
-
-				irradiance = irradiance * cPI / (sample_num * sample_num);
+				irradiance = irradiance * 2.0f / float(sample_num * sample_num);
 				face.write_at(i, j, irradiance);
 			}
 		}
@@ -108,7 +107,7 @@ void generate_irradiance_map(const std::string& src_texpath, const std::string& 
 
 }
 
-vector3_t importance_sample_GGX(float e1, float e2, const vector3_t& n, float roughness)
+vector3_t importance_sample_GGX(float e1, float e2, float roughness)
 {
 	float a = roughness * roughness;
 	float a2 = a * a;
@@ -146,7 +145,7 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 				vector3_t tan_x, tan_y;
 				makeup_rot(n, tan_x, tan_y);
 
-				vector3_t v = n; // suppose that v and n both are same to r!
+				vector3_t v = n; // specular is dependent on view direction, so assume v == n == r for precompute!
 
 				vector3_t filtered_color(0, 0, 0);
 				float weight = 0;
@@ -157,13 +156,13 @@ void generate_prefilter_envmap(const std::string& src_texpath, const std::string
 					float e1, e2;
 					hammersley(i, sample_num, e1, e2);
 
-					vector4_t s = importance_sample_GGX(e1, e2, n, roughness);
+					vector3_t s = importance_sample_GGX(e1, e2, roughness);
 
-					// convert h to world space
+					// convert normal direction s to world space
 					vector3_t h = tan_x * s.x + tan_y * s.y + n * s.z;
 					h.normalize();
 
-					vector3_t l = h * 2.0f * dot(v, h) - v;
+					vector3_t l = reflect(h, v);
 					l.normalize();
 
 					float NoL = max(dot(n, l), 0.0f);
@@ -243,7 +242,7 @@ vector3_t IntegrateBRDF(float NdotV, float roughness)
 	{
 		float e1, e2;
 		hammersley(i, SAMPLE_COUNT, e1, e2);
-		vector3_t s = importance_sample_GGX(e1, e2, n, roughness);
+		vector3_t s = importance_sample_GGX(e1, e2, roughness);
 
 		// convert h to world space
 		vector3_t h = tan_x * s.x + tan_y * s.y + n * s.z;
