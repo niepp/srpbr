@@ -92,7 +92,7 @@ public:
 	{
 		zbuffer = new float[width * height];
 		for (int i = 0; i < width * height; ++i) {
-			zbuffer[i] = FLT_MAX;
+			zbuffer[i] = 0;
 		}
 
 		ibl.load("./resource/ibl_textures/");
@@ -149,7 +149,6 @@ private:
 	void vertex_process(const matrix_t& world, const matrix_t& mvp, const mesh_vertex_t& v, interp_vertex_t& p);
 	void draw_triangle(const interp_vertex_t& p0, const interp_vertex_t& p1, const interp_vertex_t& p2);
 	void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c);
-	vector4_t sample_texture(texture2d_t* tex_ptr, const texcoord_t& uv) const;
 };
 
 
@@ -162,7 +161,8 @@ void soft_renderer_t::write_pixel(int x, int y, uint32_t color)
 
 void soft_renderer_t::write_depth(int x, int y, float z)
 {
-	// zbuffer store the view space z value
+	// zbuffer store the NDC(Normalized Device Coordinates) reverse-z value
+	// https://developer.nvidia.com/content/depth-precision-visualized
 	assert(x >= 0 && x < width);
 	assert(y >= 0 && y < height);
 	zbuffer[(height - y - 1) * width + x] = z;
@@ -173,15 +173,7 @@ bool soft_renderer_t::depth_test(int x, int y, float z)
 	assert(x >= 0 && x < width);
 	assert(y >= 0 && y < height);
 	float nowz = zbuffer[(height - y - 1) * width + x];
-	return z < nowz;
-}
-
-vector4_t soft_renderer_t::sample_texture(texture2d_t *tex_ptr, const texcoord_t &uv) const
-{
-	if (tex_ptr != nullptr) {
-		return tex_ptr->sample(uv);
-	}
-	return vector4_t();
+	return z > nowz;
 }
 
 vector3_t soft_renderer_t::normal_mapping(const vector3_t& vt_n, const vector3_t& ts_n)
@@ -357,7 +349,7 @@ void soft_renderer_t::pixel_process(int x, int y, const interp_vertex_t& p)
 	}
 	std::swap(color.r, color.b); // windows HDC is bgra format!
 	write_pixel(x, y, makefour(color));
-	write_depth(x, y, p.pos.z / p.pos.w);
+	write_depth(x, y, p.pos.z);
 }
 
 void soft_renderer_t::scan_horizontal(const interp_vertex_t& vl, const interp_vertex_t& vr, int y)
@@ -373,7 +365,7 @@ void soft_renderer_t::scan_horizontal(const interp_vertex_t& vl, const interp_ve
 		float w = (i - vl.pos.x) / dist;
 		w = clamp(w, 0.0f, 1.0f);
 		interp_vertex_t p = lerp(vl, vr, w);
-		if (depth_test(i, y, p.pos.z / p.pos.w)) {
+		if (depth_test(i, y, p.pos.z)) {
 			pixel_process(i, y, p);
 		}
 	}
@@ -619,7 +611,7 @@ void soft_renderer_t::clear(bool bclear_fb, bool bclear_zb)
 
 	if (bclear_zb) {
 		for (int i = 0; i < width * height; ++i) {
-			zbuffer[i] = FLT_MAX;
+			zbuffer[i] = 0;
 		}
 	}
 }
@@ -648,7 +640,6 @@ void soft_renderer_t::save_depthbuffer(const std::string& depth_texpath)
 			int src_idx = i * width + j;
 			int dst_idx = (height - 1 - i) * width + j;
 			float z = zbuffer[src_idx];
-			z = (z - camera.pnear) / (camera.pfar - camera.pnear);
 			data[dst_idx] = makefour(vector4_t(z, z, z, 1.0f));
 		}
 	}

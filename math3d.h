@@ -500,13 +500,15 @@ struct matrix_t
 	}
 
 	// projection matrix (ref to D3DXMatrixPerspectiveFovLH)
+	// [reverse-z] mapping near plane to ndc 1.0 and far plane to ndc 0
+	// https://developer.nvidia.com/content/depth-precision-visualized
 	void set_perspective(float fovy, float aspect, float zn, float zf)
 	{
 		float fax = 1.0f / (float)tan(fovy * 0.5f);
 		m[0][0] = (float)(fax / aspect);
 		m[1][1] = (float)(fax);
-		m[2][2] = zf / (zf - zn);
-		m[3][2] = -zn * zf / (zf - zn);
+		m[2][2] = -zn / (zf - zn);
+		m[3][2] = zf * zn / (zf - zn);
 		m[2][3] = 1;
 		m[3][3] = 0;
 	}
