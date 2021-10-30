@@ -297,19 +297,19 @@ public:
 		return faces[face_id];
 	}
 
-	void load_tex(const std::string& tex_path, const std::string& ext_name, bool is_srgb)
+	void load_tex(const std::string& tex_path, const std::string& ext_name, bool is_srgb, bool vertical_flip = true)
 	{
 		const std::string face_tags[6] = { "px", "nx", "pz", "nz", "ny", "py" };
 		for (int i = 0; i < 6; ++i) {
 			std::string path = tex_path + "_" + face_tags[i] + ext_name;
-			faces[i].load_tex(path.c_str(), is_srgb);
+			faces[i].load_tex(path.c_str(), is_srgb, vertical_flip);
 		}
 	}
 
-	void load_tex(const std::string& tex_path, bool is_srgb)
+	void load_tex(const std::string& tex_path, bool is_srgb, bool vertical_flip = true)
 	{
 		int w = 0, h = 0;
-		vector4_t *texture = load_tex_impl(tex_path.c_str(), w, h, is_srgb);
+		vector4_t *texture = load_tex_impl(tex_path.c_str(), w, h, is_srgb, vertical_flip);
 		assert(w * 3 == h * 4);
 		int siz = w / 4;
 		assert(w == siz * 4);

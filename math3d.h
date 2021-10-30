@@ -570,7 +570,7 @@ inline matrix_t mul(const matrix_t& a, const matrix_t& b)
 	return c;
 }
 
-struct model_vertex_t
+struct mesh_vertex_t
 {
 	vector3_t pos;
 	vector3_t nor;

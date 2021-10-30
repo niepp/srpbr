@@ -1,5 +1,5 @@
-#ifndef __MODEL_H__
-#define __MODEL_H__
+#ifndef __MESH_H__
+#define __MESH_H__
 
 #include <cassert>
 #include <string>
@@ -8,14 +8,14 @@
 #include <sstream>
 #include <map>
 
-typedef std::vector<model_vertex_t> model_vertex_vec_t;
+typedef std::vector<mesh_vertex_t> mesh_vertex_vec_t;
 typedef std::vector<interp_vertex_t> interp_vertex_vec_t;
 typedef std::vector<uint16_t> index_vec_t;
 
-struct model_t 
+struct mesh_t
 {
-	model_vertex_vec_t m_model_vertex;
-	index_vec_t m_model_indices;
+	mesh_vertex_vec_t m_mesh_vertex;
+	index_vec_t m_mesh_indices;
 	interp_vertex_vec_t m_vertex_post;
 
 	struct index_t
@@ -43,11 +43,11 @@ struct model_t
 		index_t a, b, c;
 	};
 
-	model_t()
+	mesh_t()
 	{
 	}
 
-	int load(const std::string &mpath)
+	int load(const std::string& mpath)
 	{
 		std::ifstream in;
 		in.open(mpath, std::ifstream::in);
@@ -64,7 +64,7 @@ struct model_t
 			return scnt;
 		};
 
-		auto read_point = [](std::istringstream& s, index_t &p) {
+		auto read_point = [](std::istringstream& s, index_t& p) {
 			char slash;
 			s >> p.iv >> slash >> p.it >> slash >> p.in;
 			// in wavefront obj all indices start at 1, not zero
@@ -110,6 +110,7 @@ struct model_t
 				iss >> trash;
 				int scnt = slash_count(line, '/');
 				if (scnt != 6) {
+					std::cout << "parse obj(wavefront) failed!" << std::endl;
 					return -1;
 				}
 				triangle_t tri;
@@ -137,13 +138,13 @@ struct model_t
 			}
 		}
 
-		m_model_vertex.resize(vmap.size());
-		m_model_indices.resize(faces.size() * 3);
+		m_mesh_vertex.resize(vmap.size());
+		m_mesh_indices.resize(faces.size() * 3);
 		m_vertex_post.resize(vmap.size());
 
 		for (auto& kv : vmap)
 		{
-			model_vertex_t &vtx = m_model_vertex[kv.second];
+			mesh_vertex_t& vtx = m_mesh_vertex[kv.second];
 			index_t idx = kv.first;
 			vtx.pos = verts[idx.iv] * 0.01f;   // ue4 obj's unit is centimeter, convert to meter
 			vtx.uv = uvs[idx.it];
@@ -160,9 +161,9 @@ struct model_t
 			int ia = vmap[faces[i].a];
 			int ib = vmap[faces[i].b];
 			int ic = vmap[faces[i].c];
-			m_model_indices[i * 3 + 0] = ia;
-			m_model_indices[i * 3 + 1] = ib;
-			m_model_indices[i * 3 + 2] = ic;
+			m_mesh_indices[i * 3 + 0] = ia;
+			m_mesh_indices[i * 3 + 1] = ib;
+			m_mesh_indices[i * 3 + 2] = ic;
 		}
 
 		return 0;
@@ -171,6 +172,6 @@ struct model_t
 
 };
 
-#endif //__MODEL_H__
+#endif //__MESH_H__
 
 

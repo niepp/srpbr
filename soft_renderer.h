@@ -1,6 +1,6 @@
 #ifndef __SOFT_RENDERER_H__
 #define __SOFT_RENDERER_H__
-
+#include <memory>
 
 /*
  有一边是水平的三角形
@@ -21,14 +21,15 @@ struct scan_tri_t
 enum class shading_model_t
 {
 	eSM_Wireframe = 0,
-	eSM_Color,	
+	eSM_Color,
 	eSM_Phong,
 	eSM_PBR,
 	eSM_Skybox,
 	eSM_MAX,
 };
 
-enum class cull_mode_t {
+enum class cull_mode_t
+{
 	eCM_None,
 	eCM_CW,
 	eCM_CCW,
@@ -45,6 +46,24 @@ struct uniformbuffer_t
 	float specular_power;
 };
 
+struct shader_resource_t
+{
+	texture2d_t albedo_tex;
+	texture2d_t metallic_tex;
+	texture2d_t roughness_tex;
+	texture2d_t normal_tex;
+};
+
+struct camera_t
+{
+	vector3_t eye;
+	vector3_t lookat;
+	float fovy;
+	float aspect;
+	float pnear;
+	float pfar;
+};
+
 class soft_renderer_t
 {
 private:
@@ -58,61 +77,40 @@ private:
 	shading_model_t shading_model;
 	cull_mode_t cull_mode;
 
-	texture2d_t albedo_tex;
-	texture2d_t metallic_tex;
-	texture2d_t roughness_tex;
-	texture2d_t normal_tex;
-	cube_texture_t sky_env_map; // environment map
+	cube_texture_t *sky_env_map; // environment map
+	shader_resource_t* shader_resource;
 
-	float eyedist;
-	float fovy;
+	camera_t camera;
 
 public:
-	soft_renderer_t(int w, int h, uint32_t* fb, const vector3_t& eye, float infovy = cPI * 0.5f) :
+	soft_renderer_t(int w, int h, uint32_t* fb, float infovy = cPI * 0.5f, float innear = 0.1f, float infar = 2000.0f) :
 		width(w), height(h),
 		framebuffer(fb),
 		zbuffer(nullptr),
 		shading_model(shading_model_t::eSM_PBR),
-		cull_mode(cull_mode_t::eCM_CW),
-		fovy(infovy)
+		cull_mode(cull_mode_t::eCM_CW)
 	{
 		zbuffer = new float[width * height];
 		for (int i = 0; i < width * height; ++i) {
 			zbuffer[i] = FLT_MAX;
 		}
 
-		sky_env_map.load_tex("./resource/ibl_textures/env.png", true);
 		ibl.load("./resource/ibl_textures/");
 
-		albedo_tex.load_tex("./resource/rustediron2_basecolor.png", true);
-		metallic_tex.load_tex("./resource/rustediron2_metallic.png", true);
-		roughness_tex.load_tex("./resource/rustediron2_roughness.png", true);
-		normal_tex.load_tex("./resource/rustediron2_normal.png", false);
-
-		uniformbuffer.eye = eye;
-		uniformbuffer.light_dir.set(0.0f, -1.0f, 0.0f);
-		uniformbuffer.light_intensity.set(1.0f, 1.0f, 1.0f);
-		uniformbuffer.specular_power = 8.0f;
-
-		// setup view matrix
-		vector3_t at(0.0f, 0.0f, 0.0f);
-		vector3_t up(0.0f, 0.0f, 1.0f); // z axis
-		uniformbuffer.view.set_lookat(uniformbuffer.eye, at, up);
+		camera.fovy = infovy;
+		camera.aspect = 1.0f * width / height;
+		camera.pnear = innear;
+		camera.pfar = infar;
 
 		// setup perspective matrix
-		float aspect = 1.0f * width / height;
-		uniformbuffer.proj.set_perspective(fovy, aspect, 0.1f, 2000.0f);
-
-		// cache view X proj
-		uniformbuffer.viewproj = mul(uniformbuffer.view, uniformbuffer.proj);
+		uniformbuffer.proj.set_perspective(camera.fovy, camera.aspect, camera.pnear, camera.pfar);
 
 	}
 
 	~soft_renderer_t()
 	{
-		delete[] framebuffer;
-		framebuffer = nullptr;
 		delete[] zbuffer;
+		framebuffer = nullptr;
 		zbuffer = nullptr;
 	}
 
@@ -121,12 +119,16 @@ public:
 
 	cull_mode_t get_cull_mode() const { return cull_mode; }
 	void set_cull_mode(cull_mode_t in_cull_mode) { cull_mode = in_cull_mode; }
+	void set_sky_env_map(cube_texture_t* skymap) { sky_env_map = skymap; }
+	void set_shader_resource(shader_resource_t* srv) { shader_resource = srv; }
 
 	void clear(bool bclear_fb, bool bclear_zb);
 	void save_framebuffer(const std::string& fb_texpath);
-	void update_light(const vector3_t& light_angle);
-	void update_eye_position(const vector3_t& eye);
-	void render_model(model_t* model, const matrix_t &world);
+	void save_depthbuffer(const std::string& depth_texpath);
+	void set_light_direction(const vector3_t& light_angle);
+	void set_light_intensity(const vector4_t& light_inten);
+	void set_eye_lookat(const vector3_t& eye, const vector3_t& at);
+	void render_model(mesh_t* mesh, const matrix_t& world);
 	void draw_cartesian_coordinate();
 
 private:
@@ -144,12 +146,11 @@ private:
 	bool check_clip_triangle(const vector4_t* p0, const vector4_t* p1, const vector4_t* p2);
 	void perspective_divide(interp_vertex_t* p);
 	void to_screen_coord(vector4_t* p);
-	void vertex_process(const matrix_t& world, const matrix_t& mvp, const model_vertex_t& v, interp_vertex_t& p);
+	void vertex_process(const matrix_t& world, const matrix_t& mvp, const mesh_vertex_t& v, interp_vertex_t& p);
 	void draw_triangle(const interp_vertex_t& p0, const interp_vertex_t& p1, const interp_vertex_t& p2);
-	void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c);	
-
+	void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c);
+	vector4_t sample_texture(texture2d_t* tex_ptr, const texcoord_t& uv) const;
 };
-
 
 
 void soft_renderer_t::write_pixel(int x, int y, uint32_t color)
@@ -161,8 +162,7 @@ void soft_renderer_t::write_pixel(int x, int y, uint32_t color)
 
 void soft_renderer_t::write_depth(int x, int y, float z)
 {
-	// zbuffer store the clip space reverse-z value
-	// https://developer.nvidia.com/content/depth-precision-visualized
+	// zbuffer store the view space z value
 	assert(x >= 0 && x < width);
 	assert(y >= 0 && y < height);
 	zbuffer[(height - y - 1) * width + x] = z;
@@ -174,6 +174,14 @@ bool soft_renderer_t::depth_test(int x, int y, float z)
 	assert(y >= 0 && y < height);
 	float nowz = zbuffer[(height - y - 1) * width + x];
 	return z < nowz;
+}
+
+vector4_t soft_renderer_t::sample_texture(texture2d_t *tex_ptr, const texcoord_t &uv) const
+{
+	if (tex_ptr != nullptr) {
+		return tex_ptr->sample(uv);
+	}
+	return vector4_t();
 }
 
 vector3_t soft_renderer_t::normal_mapping(const vector3_t& vt_n, const vector3_t& ts_n)
@@ -206,8 +214,8 @@ void soft_renderer_t::phong_shading(const interp_vertex_t& p, vector4_t& out_col
 	vector3_t wpos = p.wpos / p.pos.w;
 	vector3_t l = -uniformbuffer.light_dir;
 
-	vector4_t albedo = albedo_tex.sample(uv);
-	vector3_t tangent_space_n = normal_tex.sample(uv).to_vec3();
+	vector4_t albedo = shader_resource->albedo_tex.sample(uv);
+	vector3_t tangent_space_n = shader_resource->normal_tex.sample(uv).to_vec3();
 
 	tangent_space_n = tangent_space_n * 2.0f - vector3_t::one();
 	tangent_space_n.normalize();
@@ -248,10 +256,10 @@ void soft_renderer_t::pbr_shading(const interp_vertex_t& p, vector4_t& out_color
 
 	vector3_t wpos = p.wpos / p.pos.w;
 
-	vector3_t tangent_space_n = normal_tex.sample(uv).to_vec3();
-	vector3_t albedo = albedo_tex.sample(uv).to_vec3();
-	vector4_t metallic_texel = metallic_tex.sample(uv);
-	vector4_t roughness_texel = roughness_tex.sample(uv);
+	vector3_t tangent_space_n = shader_resource->normal_tex.sample(uv).to_vec3();
+	vector3_t albedo = shader_resource->albedo_tex.sample(uv).to_vec3();
+	vector4_t metallic_texel = shader_resource->metallic_tex.sample(uv);
+	vector4_t roughness_texel = shader_resource->roughness_tex.sample(uv);
 
 	tangent_space_n = tangent_space_n * 2.0f - vector3_t::one();
 	tangent_space_n.normalize();
@@ -340,7 +348,7 @@ void soft_renderer_t::pixel_process(int x, int y, const interp_vertex_t& p)
 	{
 		vector3_t n = p.nor / p.pos.w;
 		n.normalize();
-		vector3_t radiance = sky_env_map.sample(n).to_vec3();
+		vector3_t radiance = sky_env_map->sample(n).to_vec3();
 		color = gamma_correction(radiance);
 	}
 	break;
@@ -349,7 +357,7 @@ void soft_renderer_t::pixel_process(int x, int y, const interp_vertex_t& p)
 	}
 	std::swap(color.r, color.b); // windows HDC is bgra format!
 	write_pixel(x, y, makefour(color));
-	write_depth(x, y, p.pos.z);
+	write_depth(x, y, p.pos.z / p.pos.w);
 }
 
 void soft_renderer_t::scan_horizontal(const interp_vertex_t& vl, const interp_vertex_t& vr, int y)
@@ -365,14 +373,7 @@ void soft_renderer_t::scan_horizontal(const interp_vertex_t& vl, const interp_ve
 		float w = (i - vl.pos.x) / dist;
 		w = clamp(w, 0.0f, 1.0f);
 		interp_vertex_t p = lerp(vl, vr, w);
-
-		if (p.pos.w < cEpslion)
-		{
-			p.pos.w = 1.0f;
-			std::cout << "p.pos.w = " << p.pos.w << std::endl;
-		}
-
-		if (depth_test(i, y, p.pos.z)) {
+		if (depth_test(i, y, p.pos.z / p.pos.w)) {
 			pixel_process(i, y, p);
 		}
 	}
@@ -458,7 +459,7 @@ void soft_renderer_t::to_screen_coord(vector4_t* p)
 	p->y = height - 1 - (p->y + 1.0f) * 0.5f * height;
 }
 
-void soft_renderer_t::vertex_process(const matrix_t& world, const matrix_t& mvp, const model_vertex_t& v, interp_vertex_t& p)
+void soft_renderer_t::vertex_process(const matrix_t& world, const matrix_t& mvp, const mesh_vertex_t& v, interp_vertex_t& p)
 {
 	p.pos = mvp * vector4_t(v.pos, 1.0f);
 	p.wpos = world.mul_point(v.pos);
@@ -639,7 +640,23 @@ void soft_renderer_t::save_framebuffer(const std::string& fb_texpath)
 	delete[] data;
 }
 
-void soft_renderer_t::update_light(const vector3_t& light_angle)
+void soft_renderer_t::save_depthbuffer(const std::string& depth_texpath)
+{
+	unsigned int* data = new unsigned int[width * height];
+	for (int i = 0; i < height; ++i) {
+		for (int j = 0; j < width; ++j) {
+			int src_idx = i * width + j;
+			int dst_idx = (height - 1 - i) * width + j;
+			float z = zbuffer[src_idx];
+			z = (z - camera.pnear) / (camera.pfar - camera.pnear);
+			data[dst_idx] = makefour(vector4_t(z, z, z, 1.0f));
+		}
+	}
+	stbi_write_png(depth_texpath.c_str(), width, height, 4, data, width * 4);
+	delete[] data;
+}
+
+void soft_renderer_t::set_light_direction(const vector3_t& light_angle)
 {
 	float angle_y = clamp(light_angle.y, 0.0f, cPI);
 	float cosw = cos(angle_y);
@@ -649,24 +666,32 @@ void soft_renderer_t::update_light(const vector3_t& light_angle)
 	uniformbuffer.light_dir.z = cosw;
 }
 
-void soft_renderer_t::update_eye_position(const vector3_t& eye)
+void soft_renderer_t::set_light_intensity(const vector4_t& light_inten)
 {
+	uniformbuffer.light_intensity = light_inten.to_vec3();
+	uniformbuffer.specular_power = light_inten.w;
+}
+
+void soft_renderer_t::set_eye_lookat(const vector3_t &eye, const vector3_t &at)
+{
+	camera.eye = eye;
+	camera.lookat = at;
+
 	uniformbuffer.eye = eye;
 
 	// setup view matrix
-	vector3_t at(0.0f, 0.0f, 0.0f);
-	vector3_t up(0.0f, 0.0f, 1.0f); // z axis
+	const vector3_t up(0.0f, 0.0f, 1.0f); // z axis
 	uniformbuffer.view.set_lookat(uniformbuffer.eye, at, up);
 
 	// cache view X proj
 	uniformbuffer.viewproj = mul(uniformbuffer.view, uniformbuffer.proj);
 }
 
-void soft_renderer_t::render_model(model_t* model, const matrix_t &world)
+void soft_renderer_t::render_model(mesh_t* mesh, const matrix_t &world)
 {
-	model_vertex_vec_t& vb = model->m_model_vertex;
-	interp_vertex_vec_t& vb_post = model->m_vertex_post;
-	index_vec_t& ib = model->m_model_indices;
+	mesh_vertex_vec_t& vb = mesh->m_mesh_vertex;
+	interp_vertex_vec_t& vb_post = mesh->m_vertex_post;
+	index_vec_t& ib = mesh->m_mesh_indices;
 
 	matrix_t mvp = mul(world, uniformbuffer.viewproj);
 

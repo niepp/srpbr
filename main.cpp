@@ -3,6 +3,8 @@
 #include <tchar.h>
 #include <math.h>
 #include <vector>
+#include <atomic>
+#include <thread>
 #include <iostream>
 #include <cassert>
 #include <chrono>
@@ -11,12 +13,17 @@
 #include "pbr_common.h"
 #include "texture.h"
 #include "ibl.h"
-#include "model.h"
+#include "mesh.h"
 
 #include "pre_compute.h"
-
 #include "soft_renderer.h"
+#include "scene.h"
 
+enum class command_t {
+	cNone = 0,
+	cSaveFramebuffer,
+	cSaveDepthbuffer,
+};
 
 float reci_freq;
 int64_t tick_start;
@@ -26,11 +33,11 @@ HDC screenDC;
 
 int width = 800;
 int height = 600;
-model_t sphere_model;
-float view_angle = 0;
-vector3_t eye_pos(0.4f, 4.5f, 0.25f);
-vector3_t light_angle(cPI, cPI / 2.0f, 0.0f);
-soft_renderer_t *soft_renderer = nullptr;
+
+scene_t scn;
+soft_renderer_t* soft_renderer = nullptr;
+
+std::atomic<command_t> cmd(command_t::cNone);
 
 template <typename T, int n>
 int array_size(T(&)[n])
@@ -44,41 +51,37 @@ inline long long get_now_ms()
 	return std::chrono::duration_cast<std::chrono::milliseconds>(tp_now.time_since_epoch()).count();
 }
 
-
-void render_scene()
+void read_console(std::atomic<command_t>& readcmd)
 {
-	soft_renderer->clear(true, true);
-
-	view_angle += cPI / 128.0f;
-
-	matrix_t mrot;
-	mrot.set_rotate(0, 0, 1, view_angle);
-
-	vector3_t eye = mrot.mul_point(eye_pos);
-	soft_renderer->update_eye_position(eye);
-
-	soft_renderer->draw_cartesian_coordinate();
-
-	matrix_t world;
-	world.set_scale(1000.0f, 1000.0f, 1000.0f);
-	world.apply_translate(0, 0, -500.0f);
-
-	shading_model_t old_shading_model = soft_renderer->get_shading_model();
-	if (old_shading_model != shading_model_t::eSM_Wireframe) {
-		soft_renderer->set_shading_model(shading_model_t::eSM_Skybox);
+	std::cout << " --------------------------------- " << std::endl;	
+	std::cout << " c.save_fb : save framebuffer to result " << std::endl;
+	std::cout << " c.save_depth : save depthbuffer to result " << std::endl;
+	std::cout << " --------------------------------- \n" << std::endl;
+	std::string buffer;
+	while (true) {
+		std::cin >> buffer;
+		if (buffer == "c.save_fb") {
+			readcmd.store(command_t::cSaveFramebuffer);
+		}
+		else if (buffer == "c.save_depth") {
+			readcmd.store(command_t::cSaveDepthbuffer);
+		}
 	}
-	soft_renderer->set_cull_mode(cull_mode_t::eCM_CCW);
-	soft_renderer->render_model(&sphere_model, world);
-	soft_renderer->set_shading_model(old_shading_model);
-
-	world.set_scale(1.6f, 1.6f, 1.6f);
-	world.apply_translate(0, 0, -0.8f);
-
-	soft_renderer->set_cull_mode(cull_mode_t::eCM_CW);
-	soft_renderer->render_model(&sphere_model, world);
-
 }
 
+void on_console_cmd()
+{
+	switch (cmd.load())
+	{
+	case command_t::cSaveFramebuffer:
+		soft_renderer->save_framebuffer("./result/framebuffer_" + std::to_string(get_now_ms()) + ".png");
+		break;
+	case command_t::cSaveDepthbuffer:
+		soft_renderer->save_depthbuffer("./result/depthbuffer_" + std::to_string(get_now_ms()) + ".png");		
+		break;
+	}
+	cmd.store(command_t::cNone);
+}
 
 void main_loop()
 {
@@ -117,7 +120,9 @@ void main_loop()
 				::SetWindowText(hwnd, str);
 			}
 
-			render_scene();
+			on_console_cmd();
+		
+			scn.render(soft_renderer);
 
 			HDC hDC = GetDC(hwnd);
 			BitBlt(hDC, 0, 0, width, height, screenDC, 0, 0, SRCCOPY);
@@ -127,68 +132,13 @@ void main_loop()
 	}
 }
 
-LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-	switch (msg)
-	{
-	case WM_CREATE:
-		break;
-	case WM_KEYDOWN:
-		switch (wParam & 0x1FF)
-		{
-		case 'C':
-		{
-			shading_model_t shading_model = (shading_model_t)((int)soft_renderer->get_shading_model() + 1);
-			if (shading_model == shading_model_t::eSM_Skybox) {
-				shading_model = (shading_model_t)((int)shading_model + 1);
-			}
-			if (shading_model == shading_model_t::eSM_MAX) {
-				shading_model = shading_model_t::eSM_Color;
-			}
-			soft_renderer->set_shading_model(shading_model);
-			std::cout << (int)shading_model << std::endl;
-		}
-			break;
-		case VK_UP:
-			light_angle.y += 0.1f;
-			soft_renderer->update_light(light_angle);
-			break;
-		case VK_DOWN:
-			light_angle.y -= 0.1f;
-			soft_renderer->update_light(light_angle);
-			break;
-		case VK_LEFT:
-			light_angle.x -= 0.1f;
-			soft_renderer->update_light(light_angle);
-			break;
-		case VK_RIGHT:
-			light_angle.x += 0.1f;
-			soft_renderer->update_light(light_angle);
-			break;
-		case 'P':
-			soft_renderer->save_framebuffer("./result/framebuffer_" + std::to_string(get_now_ms()) + ".png");
-			break;
-		default:
-			break;
-		}
-		break;
-	case WM_SIZE:
-	case WM_EXITSIZEMOVE:
-		break;
-	case WM_DESTROY:
-		PostQuitMessage(0);
-		return 0;
-	}
-	return DefWindowProc(hWnd, msg, wParam, lParam);
-}
-
 HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
 {
 	const TCHAR class_name[] = _T("wndclass");
 
 	// Register the window class
 	WNDCLASSEX wc = {
-		sizeof(WNDCLASSEX), CS_CLASSDC, MsgProc, 0, 0,
+		sizeof(WNDCLASSEX), CS_CLASSDC, DefWindowProc, 0, 0,
 		instance, NULL, NULL, NULL, NULL,
 		class_name, NULL
 	};
@@ -247,13 +197,15 @@ int main(void)
 	reci_freq = 1000.0f / temp.QuadPart;
 	::QueryPerformanceCounter((LARGE_INTEGER*)&tick_start);
 
-	sphere_model.load("./resource/mesh_sphere.obj");
+	std::thread readcmd_thread(read_console, std::ref(cmd));
 
-	soft_renderer = new soft_renderer_t(width, height, framebuffer, eye_pos);
+	scn.load();
+	soft_renderer = new soft_renderer_t(width, height, framebuffer);
 
 	main_loop();
 
 	delete soft_renderer;
+
 	return 0;
 
 }
