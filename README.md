@@ -6,7 +6,7 @@
 2. left-hand z-up coordinate system
 3. software-rasterizer
 4. perspective-correct interpolation
-5. inverse z-buffer (z-test / z-write)
+5. z-buffer (z-test / z-write)
 6. back culling / frustum culling / viewport clip
 7. support wavefront .obj file
 8. physically-based-shading with ibl
@@ -38,17 +38,6 @@ generate ibl textures from an environment cubemap
 | ------------- |
 |![](https://github.com/niepp/srpbr/blob/main/images/constant%20color%20with%20ibl.png)|
 
-
-|no indirect lighting|
-| ------------- |
-|![](https://github.com/niepp/srpbr/blob/main/images/no%20indirect%20lighting.png)|
-
-|no specular|
-| ------------- |
-|![](https://github.com/niepp/srpbr/blob/main/images/no%20specular.png)|
-
 |standard pbr with ibl|
 | ------------- |
 |![](https://github.com/niepp/srpbr/blob/main/images/standard%20pbr%20with%20ibl.png)|
-
-![](https://github.com/niepp/srpbr/blob/main/images/srpbr.gif)
