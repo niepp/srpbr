@@ -28,7 +28,6 @@ enum class command_t {
 float reci_freq;
 int64_t tick_start;
 uint32_t frame_count = 0, frame_rate = 0;
-HWND hwnd = 0;
 HDC screenDC;
 
 int width = 800;
@@ -59,6 +58,7 @@ void read_console(std::atomic<command_t>& readcmd)
 	std::cout << " --------------------------------- \n" << std::endl;
 	std::string buffer;
 	while (true) {
+		std::cout << "cmd>";
 		std::cin >> buffer;
 		if (buffer == "c.save_fb") {
 			readcmd.store(command_t::cSaveFramebuffer);
@@ -79,11 +79,13 @@ void on_console_cmd()
 	case command_t::cSaveDepthbuffer:
 		soft_renderer->save_depthbuffer("./result/depthbuffer_" + std::to_string(get_now_ms()) + ".png");		
 		break;
+	default:
+		break;
 	}
 	cmd.store(command_t::cNone);
 }
 
-void main_loop()
+void main_loop(HWND hwnd, HDC hdc)
 {
 	// Show the window
 	::ShowWindow(hwnd, SW_SHOWDEFAULT);
@@ -121,15 +123,39 @@ void main_loop()
 			}
 
 			on_console_cmd();
-		
+
 			scn.render(soft_renderer);
 
-			HDC hDC = GetDC(hwnd);
-			BitBlt(hDC, 0, 0, width, height, screenDC, 0, 0, SRCCOPY);
-			ReleaseDC(hwnd, hDC);
+			BitBlt(hdc, 0, 0, width, height, screenDC, 0, 0, SRCCOPY);
 
 		}
 	}
+}
+
+LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	switch (msg)
+	{
+	case WM_CREATE:
+		break;
+	case WM_SHOWWINDOW:
+	case WM_PAINT:
+	case WM_SIZE:
+	case WM_MOVE:
+	case WM_EXITSIZEMOVE:
+		{
+			RECT rect;
+			GetWindowRect(hWnd, &rect);
+			HWND cmdHwnd = GetConsoleWindow();
+			MoveWindow(cmdHwnd, rect.left, rect.bottom - 40, rect.right - rect.left, 200, TRUE);
+			ShowWindow(cmdHwnd, TRUE);
+		}
+		break;
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		return 0;
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
 HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
@@ -138,7 +164,7 @@ HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
 
 	// Register the window class
 	WNDCLASSEX wc = {
-		sizeof(WNDCLASSEX), CS_CLASSDC, DefWindowProc, 0, 0,
+		sizeof(WNDCLASSEX), CS_CLASSDC, MsgProc, 0, 0,
 		instance, NULL, NULL, NULL, NULL,
 		class_name, NULL
 	};
@@ -176,7 +202,7 @@ int main(void)
 	////generate_BRDF_LUT("./resource/brdf_lut.png");
 	//return 0;
 
-	hwnd = init_window(GetModuleHandle(NULL), _T(""), width, height);
+	HWND hwnd = init_window(GetModuleHandle(NULL), _T(""), width, height);
 
 	screenDC = CreateCompatibleDC(GetDC(hwnd));
 
@@ -197,12 +223,13 @@ int main(void)
 	reci_freq = 1000.0f / temp.QuadPart;
 	::QueryPerformanceCounter((LARGE_INTEGER*)&tick_start);
 
-	std::thread readcmd_thread(read_console, std::ref(cmd));
-
 	scn.load();
 	soft_renderer = new soft_renderer_t(width, height, framebuffer);
 
-	main_loop();
+	std::thread readcmd_thread(read_console, std::ref(cmd));
+
+	HDC hdc = GetDC(hwnd);
+	main_loop(hwnd, hdc);
 
 	delete soft_renderer;
 
