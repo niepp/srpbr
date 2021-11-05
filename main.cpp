@@ -29,9 +29,7 @@ float reci_freq;
 int64_t tick_start;
 uint32_t frame_count = 0, frame_rate = 0;
 HDC screenDC;
-
-int width = 800;
-int height = 600;
+HBITMAP screenBMP;
 
 scene_t scn;
 soft_renderer_t* soft_renderer = nullptr;
@@ -122,6 +120,11 @@ void main_loop(HWND hwnd, HDC hdc)
 				::SetWindowText(hwnd, str);
 			}
 
+			RECT rc;
+			GetClientRect(hwnd, &rc);
+			int width = rc.right - rc.left;
+			int height = rc.bottom - rc.top;
+
 			on_console_cmd();
 
 			scn.render(soft_renderer);
@@ -132,28 +135,55 @@ void main_loop(HWND hwnd, HDC hdc)
 	}
 }
 
+HBITMAP create_screenBMP(int neww, int newh, uint32_t*& framebuffer)
+{
+	BITMAPINFO bi = { sizeof(BITMAPINFOHEADER), neww, newh, 1u, 32u, BI_RGB, neww * newh * 4u, 0, 0, 0, 0 };
+	HBITMAP screenBMP = CreateDIBSection(screenDC, &bi, DIB_RGB_COLORS, (void**)&framebuffer, 0, 0);
+	return screenBMP;
+}
+
+void on_size(int width, int height)
+{
+	if (soft_renderer != nullptr) {
+		uint32_t* framebuffer = nullptr;
+		screenBMP = create_screenBMP(width, height, framebuffer);
+		if (screenBMP != NULL) {
+			SelectObject(screenDC, screenBMP);
+		}
+		soft_renderer->on_change_size(framebuffer, width, height);
+	}
+}
+
 LRESULT CALLBACK MsgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	HWND cmdHwnd = GetConsoleWindow();
 	switch (msg)
 	{
 	case WM_CREATE:
+		ShowWindow(cmdHwnd, SW_SHOWNORMAL);
+		SetWindowLong(cmdHwnd, GWL_STYLE, GetWindowLong(cmdHwnd, GWL_STYLE) & (~WS_SIZEBOX) & (~WS_MINIMIZEBOX) & (~WS_MAXIMIZEBOX));
+		BringWindowToTop(cmdHwnd);
 		break;
-	case WM_SHOWWINDOW:
-	case WM_PAINT:
 	case WM_SIZE:
+		on_size(LOWORD(lParam), HIWORD(lParam));
+		break;
 	case WM_MOVE:
-	case WM_EXITSIZEMOVE:
 		{
 			RECT rect;
 			GetWindowRect(hWnd, &rect);
-			HWND cmdHwnd = GetConsoleWindow();
-			MoveWindow(cmdHwnd, rect.left, rect.bottom - 40, rect.right - rect.left, 200, TRUE);
-			ShowWindow(cmdHwnd, TRUE);
+			SetLayeredWindowAttributes(cmdHwnd, NULL, 120, LWA_ALPHA);
+			MoveWindow(cmdHwnd, rect.left, rect.bottom - 200, rect.right - rect.left, 200, TRUE);
 		}
+		break;
+	case WM_EXITSIZEMOVE:
+		BringWindowToTop(cmdHwnd);
+		ShowWindow(cmdHwnd, SW_SHOWNORMAL);
 		break;
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		return 0;
+	default:
+		break;
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
@@ -191,37 +221,37 @@ HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
 	::ShowWindow(hwnd, SW_SHOWDEFAULT);
 	::UpdateWindow(hwnd);
 
+	::BringWindowToTop(::GetConsoleWindow());
+
 	return hwnd;
 
 }
 
-int main(void)
+
+int main()
 {
 	//generate_irradiance_map("./resource/ibl_textures/env.png", "./resource/ibl_textures/irradiance.png");
 	////generate_prefilter_envmap("./resource/ibl_textures/env.png", "./resource/ibl_textures/prefilter");
 	////generate_BRDF_LUT("./resource/brdf_lut.png");
 	//return 0;
 
-	HWND hwnd = init_window(GetModuleHandle(NULL), _T(""), width, height);
-
-	screenDC = CreateCompatibleDC(GetDC(hwnd));
-
-	BITMAPINFO bi = {
-		{ sizeof(BITMAPINFOHEADER), width, height, 1u, 32u, BI_RGB, width * height * 4u, 0, 0, 0, 0 }
-	};
-
-	uint32_t* framebuffer = nullptr;
-	HBITMAP screenBMP = CreateDIBSection(screenDC, &bi, DIB_RGB_COLORS, (void**)&framebuffer, 0, 0);
-	if (screenBMP == NULL) {
-		return -1;
-	}
-
-	SelectObject(screenDC, screenBMP);
-
 	LARGE_INTEGER temp;
 	::QueryPerformanceFrequency(&temp);
 	reci_freq = 1000.0f / temp.QuadPart;
 	::QueryPerformanceCounter((LARGE_INTEGER*)&tick_start);
+
+	int width = 800;
+	int height = 600;
+	HWND hwnd = init_window(GetModuleHandle(NULL), _T(""), width, height);
+
+	screenDC = CreateCompatibleDC(GetDC(hwnd));
+
+	uint32_t* framebuffer = nullptr;
+	screenBMP = create_screenBMP(width, height, framebuffer);
+	if (screenBMP == NULL) {
+		return -1;
+	}
+	SelectObject(screenDC, screenBMP);
 
 	scn.load();
 	soft_renderer = new soft_renderer_t(width, height, framebuffer);

@@ -114,6 +114,8 @@ public:
 		zbuffer = nullptr;
 	}
 
+	void on_change_size(uint32_t* newfb, int neww, int newh);
+
 	shading_model_t get_shading_model() const { return shading_model; }
 	void set_shading_model(shading_model_t in_shading_model) { shading_model = in_shading_model; }
 
@@ -151,6 +153,27 @@ private:
 	void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c);
 };
 
+void soft_renderer_t::on_change_size(uint32_t* newfb, int neww, int newh)
+{
+	framebuffer = newfb;
+	width = neww;
+	height = newh;
+
+	delete[] zbuffer;
+
+	zbuffer = new float[width * height];
+	for (int i = 0; i < width * height; ++i) {
+		zbuffer[i] = 0;
+	}
+
+	camera.aspect = 1.0f * width / height;
+
+	// setup perspective matrix
+	uniformbuffer.proj.set_perspective(camera.fovy, camera.aspect, camera.pnear, camera.pfar);
+
+	// cache view X proj
+	uniformbuffer.viewproj = mul(uniformbuffer.view, uniformbuffer.proj);
+}
 
 void soft_renderer_t::write_pixel(int x, int y, uint32_t color)
 {
