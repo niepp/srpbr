@@ -408,12 +408,14 @@ struct matrix_t
 		return ret;
 	}
 
+	// float4(point, 0) * matrix
 	vector3_t mul_point(const vector3_t& vec) const
 	{
 		vector4_t ret = (*this) * (vector4_t(vec, 1.0f));
 		return ret.to_vec3();
 	}
 
+	// float4(vector, 0) * matrix
 	vector3_t mul_vector(const vector3_t& vec) const
 	{
 		vector4_t ret = (*this) * (vector4_t(vec, 0.0f));
@@ -500,8 +502,28 @@ struct matrix_t
 	}
 
 	// projection matrix (ref to D3DXMatrixPerspectiveFovLH)
+	//	a   0   0   0
+	//	0   b   0   0
+	//	0   0   c   1
+	//	0   0   d   0
+	//
+	//	a = cot(fovY / 2) / aspect
+	//	b = cot(fovY / 2)
+	//	c = zf / (zf - zn)
+	//	d = -zn * zf / (zf - zn)
+	//  Z_ndc(Z_view) = c + d / Z_view
+	//  Z_ndc(zn) = -zf / (zf - zn) + zf / (zf - zn) = 0
+	//  Z_ndc(zf) = -zn / (zf - zn) + zf / (zf - zn) = 1
+	//
 	// [reverse-z] mapping near plane to ndc 1.0 and far plane to ndc 0
 	// https://developer.nvidia.com/content/depth-precision-visualized
+	// in reverse-z, projection matrix's m[2][2] and m[3][2] is modified to
+	// c' = m[2][2] = -zn / (zf - zn)
+	// d' = m[3][2] = zf * zn / (zf - zn)
+	// Z_ndc_rz(Z_view) = c' + d' / Z_view
+	// can be proved: 
+	// Z_ndc_rz(zn) = c' + d' / zn = -zn / (zf - zn) + zf / (zf - zn) = 1
+	// Z_ndc_rz(zf) = c' + d' / zf = -zn / (zf - zn) + zn / (zf - zn) = 0
 	void set_perspective(float fovy, float aspect, float zn, float zf)
 	{
 		float fax = 1.0f / (float)tan(fovy * 0.5f);

@@ -83,36 +83,9 @@ private:
 	camera_t camera;
 
 public:
-	soft_renderer_t(int w, int h, uint32_t* fb, float infovy = cPI * 0.5f, float innear = 0.1f, float infar = 2000.0f) :
-		width(w), height(h),
-		framebuffer(fb),
-		zbuffer(nullptr),
-		shading_model(shading_model_t::eSM_PBR),
-		cull_mode(cull_mode_t::eCM_CW)
-	{
-		zbuffer = new float[width * height];
-		for (int i = 0; i < width * height; ++i) {
-			zbuffer[i] = 0;
-		}
+	soft_renderer_t(int w, int h, uint32_t* fb, float infovy = cPI * 0.5f, float innear = 0.1f, float infar = 2000.0f);
 
-		ibl.load("./resource/ibl_textures/");
-
-		camera.fovy = infovy;
-		camera.aspect = 1.0f * width / height;
-		camera.pnear = innear;
-		camera.pfar = infar;
-
-		// setup perspective matrix
-		uniformbuffer.proj.set_perspective(camera.fovy, camera.aspect, camera.pnear, camera.pfar);
-
-	}
-
-	~soft_renderer_t()
-	{
-		delete[] zbuffer;
-		framebuffer = nullptr;
-		zbuffer = nullptr;
-	}
+	~soft_renderer_t();
 
 	void on_change_size(uint32_t* newfb, int neww, int newh);
 
@@ -152,6 +125,38 @@ private:
 	void draw_triangle(const interp_vertex_t& p0, const interp_vertex_t& p1, const interp_vertex_t& p2);
 	void draw_line(const vector4_t& p0, const vector4_t& p1, uint32_t c);
 };
+
+
+soft_renderer_t::soft_renderer_t(int w, int h, uint32_t* fb, float infovy, float innear, float infar)
+	: width(w), height(h),
+	framebuffer(fb),
+	zbuffer(nullptr),
+	shading_model(shading_model_t::eSM_PBR),
+	cull_mode(cull_mode_t::eCM_CW)
+{
+	zbuffer = new float[width * height];
+	for (int i = 0; i < width * height; ++i) {
+		zbuffer[i] = 0;
+	}
+
+	ibl.load("./resource/ibl_textures/");
+
+	camera.fovy = infovy;
+	camera.aspect = 1.0f * width / height;
+	camera.pnear = innear;
+	camera.pfar = infar;
+
+	// setup perspective matrix
+	uniformbuffer.proj.set_perspective(camera.fovy, camera.aspect, camera.pnear, camera.pfar);
+
+}
+
+soft_renderer_t::~soft_renderer_t()
+{
+	delete[] zbuffer;
+	framebuffer = nullptr;
+	zbuffer = nullptr;
+}
 
 void soft_renderer_t::on_change_size(uint32_t* newfb, int neww, int newh)
 {
@@ -658,11 +663,26 @@ void soft_renderer_t::save_framebuffer(const std::string& fb_texpath)
 void soft_renderer_t::save_depthbuffer(const std::string& depth_texpath)
 {
 	unsigned int* data = new unsigned int[width * height];
+
+	float maxz = 0.0f, minz = 1.0f;
 	for (int i = 0; i < height; ++i) {
 		for (int j = 0; j < width; ++j) {
 			int src_idx = i * width + j;
 			int dst_idx = (height - 1 - i) * width + j;
 			float z = zbuffer[src_idx];
+			maxz = max(maxz, z);
+			minz = min(minz, z);
+		}
+	}
+
+	float zgap = max(0.01f, maxz - minz);
+
+	for (int i = 0; i < height; ++i) {
+		for (int j = 0; j < width; ++j) {
+			int src_idx = i * width + j;
+			int dst_idx = (height - 1 - i) * width + j;
+			float z = zbuffer[src_idx];
+			z = (z - minz) / zgap;
 			data[dst_idx] = makefour(vector4_t(z, z, z, 1.0f));
 		}
 	}
