@@ -22,6 +22,12 @@ const float cPI = 3.1415926f;
 const float cRevt255 = 1.0f / 255.0f;
 const float cRevt65535 = 1.0f / 65535.0f;
 
+template <typename T, int n>
+int array_size(T(&)[n])
+{
+	return n;
+}
+
 template<typename T>
 inline bool is_valid(T f)
 {
@@ -422,31 +428,7 @@ struct matrix_t
 		return ret.to_vec3();
 	}
 
-	void set_identity()
-	{
-		m[0][0] = m[1][1] = m[2][2] = m[3][3] = 1.0f;
-		m[0][1] = m[0][2] = m[0][3] = 0.0f;
-		m[1][0] = m[1][2] = m[1][3] = 0.0f;
-		m[2][0] = m[2][1] = m[2][3] = 0.0f;
-		m[3][0] = m[3][1] = m[3][2] = 0.0f;
-	}
-
-	void apply_translate(float x, float y, float z)
-	{
-		m[3][0] = x;
-		m[3][1] = y;
-		m[3][2] = z;
-	}
-
-	void set_scale(float x, float y, float z)
-	{
-		set_identity();
-		m[0][0] = x;
-		m[1][1] = y;
-		m[2][2] = z;
-	}
-
-	void set_rotate(float x, float y, float z, float theta)
+	matrix_t make_rotate_matrix(float x, float y, float z, float theta)
 	{
 		float qsin = (float)sin(theta * 0.5f);
 		float qcos = (float)cos(theta * 0.5f);
@@ -468,6 +450,68 @@ struct matrix_t
 		m[0][3] = m[1][3] = m[2][3] = 0.0f;
 		m[3][0] = m[3][1] = m[3][2] = 0.0f;
 		m[3][3] = 1.0f;
+		return *this;
+	}
+
+	void set_identity()
+	{
+		m[0][0] = m[1][1] = m[2][2] = m[3][3] = 1.0f;
+		m[0][1] = m[0][2] = m[0][3] = 0.0f;
+		m[1][0] = m[1][2] = m[1][3] = 0.0f;
+		m[2][0] = m[2][1] = m[2][3] = 0.0f;
+		m[3][0] = m[3][1] = m[3][2] = 0.0f;
+	}
+
+	void translate(float x, float y, float z)
+	{
+		m[3][0] += x;
+		m[3][1] += y;
+		m[3][2] += z;
+	}
+
+	void scale(float x, float y, float z)
+	{
+		m[0][0] *= x; m[1][0] *= x; m[2][0] *= x;
+		m[0][1] *= y; m[1][1] *= y; m[2][1] *= y;
+		m[0][2] *= z; m[1][2] *= z; m[2][2] *= z;
+	}
+
+	void rotate(float x, float y, float z, float theta)
+	{
+		matrix_t add_rot;
+		add_rot.make_rotate_matrix(x, y, z, theta);
+
+		matrix_t cur_mat = *this;
+
+		for (int i = 0; i < 3; ++i) {
+			for (int j = 0; j < 3; ++j) {
+				float s = 0;
+				for (int k = 0; k < 3; ++k) {
+					s += (cur_mat.m[i][k] * add_rot.m[k][j]);
+				}
+				m[i][j] = s;
+			}
+		}
+	}
+
+	void set_translate(float x, float y, float z)
+	{
+		m[3][0] = x;
+		m[3][1] = y;
+		m[3][2] = z;
+	}
+
+	void set_scale(float x, float y, float z)
+	{
+		set_identity();
+		m[0][0] = x;
+		m[1][1] = y;
+		m[2][2] = z;
+	}
+
+	void set_rotate(float x, float y, float z, float theta)
+	{
+		this->make_rotate_matrix(x, y, z, theta);
 	}
 
 	// view matrix
@@ -579,13 +623,10 @@ inline vector4_t maxv(const vector4_t& a, const vector4_t& b)
 inline matrix_t mul(const matrix_t& a, const matrix_t& b)
 {
 	matrix_t c;
-	for (int i = 0; i < 4; ++i)
-	{
-		for (int j = 0; j < 4; ++j)
-		{
+	for (int i = 0; i < 4; ++i) {
+		for (int j = 0; j < 4; ++j) {
 			float s = 0;
-			for (int k = 0; k < 4; ++k)
-			{
+			for (int k = 0; k < 4; ++k) {
 				s += (a.m[i][k] * b.m[k][j]);
 			}
 			c.m[i][j] = s;

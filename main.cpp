@@ -23,6 +23,9 @@ enum class command_t {
 	cNone = 0,
 	cSaveFramebuffer,
 	cSaveDepthbuffer,
+	cNextSky,
+	cNextModel,
+	cAutoRotate,
 };
 
 float reci_freq;
@@ -36,11 +39,6 @@ soft_renderer_t* soft_renderer = nullptr;
 
 std::atomic<command_t> cmd(command_t::cNone);
 
-template <typename T, int n>
-int array_size(T(&)[n])
-{
-	return n;
-}
 
 inline long long get_now_ms()
 {
@@ -50,19 +48,34 @@ inline long long get_now_ms()
 
 void read_console(std::atomic<command_t>& readcmd)
 {
-	std::cout << " --------------------------------- " << std::endl;	
+	std::cout << " -------------- commands --------------- " << std::endl;
 	std::cout << " c.save_fb : save framebuffer to result " << std::endl;
 	std::cout << " c.save_depth : save depthbuffer to result " << std::endl;
+	std::cout << " c.next_sky : change to next sky ibl " << std::endl;
+	std::cout << " c.next_model : show next mesh model " << std::endl;
+	std::cout << " c.auto_rot : toggle auto rot eye direction " << std::endl;
 	std::cout << " --------------------------------- \n" << std::endl;
-	std::string buffer;
+	std::string cmd;
 	while (true) {
 		std::cout << "cmd>";
-		std::cin >> buffer;
-		if (buffer == "c.save_fb") {
+		std::cin >> cmd;
+		if (cmd == "c.save_fb") {
 			readcmd.store(command_t::cSaveFramebuffer);
 		}
-		else if (buffer == "c.save_depth") {
+		else if (cmd == "c.save_depth") {
 			readcmd.store(command_t::cSaveDepthbuffer);
+		}
+		else if (cmd == "c.next_sky") {
+			readcmd.store(command_t::cNextSky);
+		}
+		else if (cmd == "c.next_model") {
+			readcmd.store(command_t::cNextModel);
+		}
+		else if (cmd == "c.auto_rot") {
+			readcmd.store(command_t::cAutoRotate);
+		}
+		else {
+			std::cout << "wrong cmd!" << std::endl;
 		}
 	}
 }
@@ -75,7 +88,16 @@ void on_console_cmd()
 		soft_renderer->save_framebuffer("./result/framebuffer_" + std::to_string(get_now_ms()) + ".png");
 		break;
 	case command_t::cSaveDepthbuffer:
-		soft_renderer->save_depthbuffer("./result/depthbuffer_" + std::to_string(get_now_ms()) + ".png");		
+		soft_renderer->save_depthbuffer("./result/depthbuffer_" + std::to_string(get_now_ms()) + ".png");
+		break;
+	case command_t::cNextSky:
+		scn.next_ibl(soft_renderer);
+		break;
+	case command_t::cNextModel:
+		scn.next_model();
+		break;
+	case command_t::cAutoRotate:
+		scn.toggle_auto_rotate();
 		break;
 	default:
 		break;
@@ -230,11 +252,6 @@ HWND init_window(HINSTANCE instance, const TCHAR* title, int width, int height)
 
 int main()
 {
-	//generate_irradiance_map("./resource/ibl_textures/env.png", "./resource/ibl_textures/irradiance.png");
-	////generate_prefilter_envmap("./resource/ibl_textures/env.png", "./resource/ibl_textures/prefilter");
-	////generate_BRDF_LUT("./resource/brdf_lut.png");
-	//return 0;
-
 	LARGE_INTEGER temp;
 	::QueryPerformanceFrequency(&temp);
 	reci_freq = 1000.0f / temp.QuadPart;

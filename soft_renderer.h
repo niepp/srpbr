@@ -96,6 +96,7 @@ public:
 	void set_cull_mode(cull_mode_t in_cull_mode) { cull_mode = in_cull_mode; }
 	void set_sky_env_map(cube_texture_t* skymap) { sky_env_map = skymap; }
 	void set_shader_resource(shader_resource_t* srv) { shader_resource = srv; }
+	void load_ibl(const std::string& tex_dir_path);
 
 	void clear(bool bclear_fb, bool bclear_zb);
 	void save_framebuffer(const std::string& fb_texpath);
@@ -178,6 +179,10 @@ void soft_renderer_t::on_change_size(uint32_t* newfb, int neww, int newh)
 
 	// cache view X proj
 	uniformbuffer.viewproj = mul(uniformbuffer.view, uniformbuffer.proj);
+}
+
+void soft_renderer_t::load_ibl(const std::string& tex_dir_path) {
+	ibl.load(tex_dir_path);
 }
 
 void soft_renderer_t::write_pixel(int x, int y, uint32_t color)

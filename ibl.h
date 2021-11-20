@@ -18,6 +18,10 @@ public:
 	ibl_t() {
 		irradiance_map = new cube_texture_t;
 		brdf_lut = new texture2d_t;
+
+		/* brdf lookup texture */
+		std::string lut_path = "./resource/brdf_lut.png";
+		brdf_lut->load_tex(lut_path.c_str(), false);
 	}
 
 	virtual ~ibl_t() {
@@ -33,13 +37,20 @@ public:
 		brdf_lut = nullptr;
 	}
 
-	void load(const std::string& tex_path)
+	void load(const std::string& tex_dir_path)
 	{
-		irradiance_map->load_tex(tex_path + "irradiance.png", false);
+		if (!prefilter_maps.empty()) {
+			for (auto m : prefilter_maps) {
+				delete m;
+			}
+			prefilter_maps.clear();
+		}
+
+		irradiance_map->load_tex(tex_dir_path + "irradiance.png", false);
 		for (int i = 0; i < 10; ++i)
 		{
 			std::ostringstream ss;
-			ss << tex_path;
+			ss << tex_dir_path;
 			ss << "prefilter_mip_";
 			ss << i;
 			ss << ".png";
@@ -47,11 +58,6 @@ public:
 			pf_map->load_tex(ss.str(), false);
 			prefilter_maps.push_back(pf_map);
 		}
-
-		/* brdf lookup texture */
-		std::string lut_path = "./resource/brdf_lut.png";
-		brdf_lut->load_tex(lut_path.c_str(), false);
-
 	}
 
 	vector3_t calc_lighting(const pbr_param_t& pbr_param, const vector3_t& albedo)

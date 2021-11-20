@@ -211,9 +211,14 @@ public:
 
 	void init(int w, int h)
 	{
-		width = w;
-		height = h;
-		texture = new vector4_t[width * height];
+		if (width != w || height != h) {
+			width = w;
+			height = h;
+			if (texture != nullptr) {
+				delete texture;
+			}
+			texture = new vector4_t[width * height];
+		}
 		for (int i = 0; i < height; ++i) {
 			for (int j = 0; j < width; ++j) {
 				int idx = i * width + j;
@@ -224,6 +229,9 @@ public:
 
 	void load_tex(const char* tex_path, bool is_srgb, bool vertical_flip = true)
 	{
+		if (texture) {
+			delete texture;
+		}
 		texture = load_tex_impl(tex_path, width, height, is_srgb, vertical_flip);
 	}
 

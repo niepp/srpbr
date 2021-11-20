@@ -21,7 +21,7 @@ struct model_t
 };
 
 
-struct scene_t
+class scene_t
 {
 	std::vector<model_t*> scn_models;
 
@@ -38,10 +38,16 @@ struct scene_t
 
 	shading_model_t debug_sm = shading_model_t::eSM_MAX;
 
+	bool auto_rotate = true;
+	int current_ibl_idx = 0;
+	int current_model_idx = 0;
+
+public:
 	scene_t() :
 		view_angle(0),
 		eye_pos(0.4f, 4.5f, 0.25f),
-		light_angle(cPI, cPI / 2.0f, 0.0f)
+		light_angle(cPI, cPI / 2.0f, 0.0f),
+		current_model_idx(0)
 	{
 	}
 
@@ -57,17 +63,28 @@ struct scene_t
 		sky_env_map.load_tex("./resource/ibl_textures/env.png", true);
 		skybox_mesh.load("./resource/mesh_sphere.obj");
 		skybox_world.set_scale(1000.0f, 1000.0f, 1000.0f);
-		skybox_world.apply_translate(0, 0, -500.0f);
+		skybox_world.translate(0, 0, -500.0f);
+
+		model_t* ball = new model_t(shading_model_t::eSM_PBR, cull_mode_t::eCM_CW);
+		ball->mesh.load("./resource/mesh_sphere.obj");
+		ball->shader_resource.albedo_tex.load_tex("./resource/rustediron2_basecolor.png", true);
+		ball->shader_resource.metallic_tex.load_tex("./resource/rustediron2_metallic.png", true);
+		ball->shader_resource.roughness_tex.load_tex("./resource/rustediron2_roughness.png", true);
+		ball->shader_resource.normal_tex.load_tex("./resource/rustediron2_normal.png", false);
+		ball->local_to_world.set_scale(1.6f, 1.6f, 1.6f);
+		ball->local_to_world.translate(0, 0, -0.8f);
+		scn_models.push_back(ball);
 
 		model_t* gun = new model_t(shading_model_t::eSM_PBR, cull_mode_t::eCM_CW);
-		gun->mesh.load("./resource/mesh_sphere.obj");
-		gun->shader_resource.albedo_tex.load_tex("./resource/rustediron2_basecolor.png", true);
-		gun->shader_resource.metallic_tex.load_tex("./resource/rustediron2_metallic.png", true);
-		gun->shader_resource.roughness_tex.load_tex("./resource/rustediron2_roughness.png", true);
-		gun->shader_resource.normal_tex.load_tex("./resource/rustediron2_normal.png", false);
-		gun->local_to_world.set_scale(1.6f, 1.6f, 1.6f);
-		gun->local_to_world.apply_translate(0, 0, -0.8f);
+		gun->mesh.load("./resource/gun/Air_Gun.obj");
+		gun->shader_resource.albedo_tex.load_tex("./resource/gun/Air_Gun_Default_color.jpg", true);
+		gun->shader_resource.metallic_tex.load_tex("./resource/gun/Air_Gun_Default_metalness.jpg", true);
+		gun->shader_resource.roughness_tex.load_tex("./resource/gun/Air_Gun_Default_roughness.jpg", true);
+		gun->shader_resource.normal_tex.load_tex("./resource/gun/Air_Gun_Default_nmap.jpg", false);
 
+		gun->local_to_world.rotate(0.0f, 0.0f, 1.0f, -cPI * 0.25f);
+		gun->local_to_world.rotate(0.0f, 1.0f, 0.0f, cPI * 0.25f);
+		gun->local_to_world.scale(500.0f, 500.0f, 500.0f);
 		scn_models.push_back(gun);
 
 	}
@@ -84,7 +101,9 @@ struct scene_t
 	{
 		soft_renderer->clear(true, true);
 
-		view_angle += cPI / 128.0f;
+		if (auto_rotate) {
+			view_angle += cPI / 128.0f;
+		}
 
 		matrix_t mrot;
 		mrot.set_rotate(0, 0, 1, view_angle);
@@ -101,12 +120,33 @@ struct scene_t
 		// render sky box
 		render_sky(soft_renderer);
 
-		for (auto &m : scn_models)
+		auto& m = scn_models[current_model_idx];
 		{
 			soft_renderer->set_shading_model(m->shading_model);
 			soft_renderer->set_cull_mode(m->cull_mode);
 			soft_renderer->set_shader_resource(&m->shader_resource);
 			soft_renderer->render_model(&m->mesh, m->local_to_world);
+		}
+	}
+
+	void toggle_auto_rotate() {
+		auto_rotate = !auto_rotate;
+	}
+
+	void next_ibl(soft_renderer_t* soft_renderer) {
+		static const std::string ibl_paths[] = { "./resource/ibl_textures/", "./resource/epic_quad/" };
+		++current_ibl_idx;
+		if (current_ibl_idx >= array_size(ibl_paths)) {
+			current_ibl_idx = 0;
+		}
+		sky_env_map.load_tex(ibl_paths[current_ibl_idx] + "env.png", true);
+		soft_renderer->load_ibl(ibl_paths[current_ibl_idx]);
+	}
+
+	void next_model() {
+		++current_model_idx;
+		if (current_model_idx >= scn_models.size()) {
+			current_model_idx = 0;
 		}
 	}
 };
