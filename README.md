@@ -29,15 +29,18 @@ generate ibl textures from an environment cubemap
     generate_BRDF_LUT("./resource/brdf_lut.png");
     ```
 ## result
+|depth buffer|
+| ------------- |
+|![](https://github.com/niepp/srpbr/blob/main/result/depth_gun.png)|
+
 |direct lighting only|
 | ------------- |
-|![](https://github.com/niepp/srpbr/blob/main/images/direct%20lighting%20only.png)|
-
+|![](https://github.com/niepp/srpbr/blob/main/result/direct_lighting_only.jpg)|
 
 |with ibl|
 | ------------- |
-|![](https://github.com/niepp/srpbr/blob/main/images/constant%20color%20with%20ibl.png)|
+|![](https://github.com/niepp/srpbr/blob/main/result/constant_color_with_ibl.jpg)|
 
 |standard pbr with ibl|
 | ------------- |
-|![](https://github.com/niepp/srpbr/blob/main/images/standard%20pbr%20with%20ibl.png)|
+|![](https://github.com/niepp/srpbr/blob/main/result/srpbr.jpg)|
