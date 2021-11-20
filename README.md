@@ -6,7 +6,7 @@
 2. left-hand z-up coordinate system
 3. software-rasterizer
 4. perspective-correct interpolation
-5. z-buffer (z-test / z-write)
+5. z-buffer (reverse-z tech / z-test / z-write)
 6. back culling / frustum culling / viewport clip
 7. support wavefront .obj file
 8. physically-based-shading with ibl
