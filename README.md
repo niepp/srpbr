@@ -28,7 +28,11 @@ generate ibl textures from an environment cubemap
     generate_prefilter_envmap("./resource/ibl_textures/env.png", "./resource/ibl_textures/prefilter");
     generate_BRDF_LUT("./resource/brdf_lut.png");
     ```
+
+
+
 ## result
+
 |depth buffer|
 | ------------- |
 |![](https://github.com/niepp/srpbr/blob/main/result/depth_gun.png)|
@@ -44,3 +48,7 @@ generate ibl textures from an environment cubemap
 |standard pbr with ibl|
 | ------------- |
 |![](https://github.com/niepp/srpbr/blob/main/result/srpbr.jpg)|
+
+## see more
+
+ https://niepp.github.io/2016/05/20/PBR-notes.html
